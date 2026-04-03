@@ -4,36 +4,46 @@ interface MingliMeterProps {
   mingli: number;
   levelName: string;
   details: { source: string; type: string; value: number; mingli: number }[];
+  isCalculating?: boolean;
 }
 
-function MingliMeter({ mingli, levelName, details }: MingliMeterProps) {
-  const maxDisplay = 150;
-  const pct = Math.min(mingli / maxDisplay, 1) * 100;
+function MingliMeter({ mingli, levelName, details, isCalculating }: MingliMeterProps) {
+  const percentage = Math.min((mingli / 120) * 100, 100);
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-gray-500">冥力值</span>
-        <span className="text-orange-500 font-medium">{levelName} · {mingli}</span>
+    <div className="rounded-[24px] border border-[#6d3417]/60 bg-[#130d0b]/70 p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <p className="text-xs tracking-[0.25em] text-stone-500">冥力测算</p>
+          <h3 className="mt-2 text-2xl text-amber-50">{mingli}</h3>
+        </div>
+        <div className="rounded-full border border-amber-700/30 bg-amber-950/20 px-3 py-1 text-xs text-amber-200/85">
+          {isCalculating ? '测算中…' : levelName}
+        </div>
       </div>
-      <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+
+      <div className="h-3 overflow-hidden rounded-full bg-[#2a1711]">
         <div
-          className="h-full rounded-full transition-all duration-500 ease-out"
+          className="h-full rounded-full transition-all duration-500"
           style={{
-            width: `${pct}%`,
-            background: 'linear-gradient(90deg, #1a0000 0%, #cc2200 30%, #ff5500 60%, #ffaa00 85%, #fff5e0 100%)',
-            boxShadow: mingli > 0 ? '0 0 10px rgba(255,85,0,0.4)' : 'none',
+            width: `${percentage}%`,
+            background: 'linear-gradient(90deg, #431407 0%, #9a3412 25%, #ea580c 55%, #fbbf24 80%, #fff7ed 100%)',
+            boxShadow: mingli > 0 ? '0 0 24px rgba(249,115,22,0.45)' : 'none',
           }}
         />
       </div>
+
+      <div className="mt-3 flex items-center justify-between text-xs text-stone-500">
+        <span>当前火势：{levelName}</span>
+        <span>{mingli >= 120 ? '烈焰已满' : `距离烈焰还差 ${Math.max(120 - mingli, 0)}`}</span>
+      </div>
+
       {details.length > 0 && (
-        <div className="space-y-1 mt-2">
-          {details.map((d, i) => (
-            <div key={i} className="flex justify-between text-xs text-gray-600">
-              <span className="truncate max-w-[160px]">
-                {d.type === 'image' ? '🖼️' : '📝'} {d.source}
-              </span>
-              <span className="text-gray-500">+{d.mingli}</span>
+        <div className="mt-4 space-y-2 rounded-2xl border border-white/5 bg-black/15 p-3">
+          {details.map((item, index) => (
+            <div key={`${item.source}-${index}`} className="flex items-center justify-between gap-3 text-sm text-stone-300/80">
+              <span className="min-w-0 truncate">{item.type === 'image' ? '画影' : '文字'} · {item.source}</span>
+              <span className="shrink-0 text-amber-200">+{item.mingli}</span>
             </div>
           ))}
         </div>

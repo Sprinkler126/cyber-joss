@@ -8,19 +8,15 @@ interface BurnButtonProps {
 function BurnButton({ onClick, disabled }: BurnButtonProps) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`relative w-full py-4 rounded-lg font-bold text-lg tracking-[0.3em] transition-all duration-500 overflow-hidden ${
-        disabled
-          ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-          : 'bg-gradient-to-b from-red-800 to-red-950 text-orange-200 hover:from-red-700 hover:to-red-900 hover:shadow-[0_0_40px_rgba(255,68,0,0.3)] active:scale-[0.98]'
-      }`}
+      className={`group relative w-full overflow-hidden rounded-[22px] px-6 py-5 text-lg tracking-[0.35em] transition-all duration-300 ${disabled ? 'cursor-not-allowed border border-stone-800 bg-stone-900/70 text-stone-600' : 'border border-orange-500/35 bg-[linear-gradient(180deg,_rgba(153,27,27,0.95)_0%,_rgba(69,10,10,0.96)_100%)] text-amber-50 shadow-[0_0_35px_rgba(234,88,12,0.18)] hover:-translate-y-0.5 hover:shadow-[0_0_50px_rgba(249,115,22,0.28)] active:translate-y-0'}`}
       style={{ fontFamily: "'Noto Serif SC', serif" }}
     >
-      {!disabled && <div className="absolute inset-0 rounded-lg border-2 border-orange-500/30 pointer-events-none" />}
-      <span className="relative z-10">
-        {disabled ? '焚烧中...' : '🔥 化 为 灰 烬 🔥'}
-      </span>
+      {!disabled && <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,220,170,0.26),_transparent_40%),linear-gradient(90deg,_transparent,_rgba(255,255,255,0.06),_transparent)] opacity-80 transition group-hover:opacity-100" />}
+      <div className="absolute inset-[1px] rounded-[20px] border border-white/8" />
+      <span className="relative z-10">{disabled ? '暂不可焚' : '化 为 灰 烬'}</span>
     </button>
   );
 }

@@ -1,249 +1,215 @@
-// App.tsx
-// 赛博烧纸 · CyberJoss — 主应用
-
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import FlameCanvas from './components/FlameCanvas';
 import TextInput from './components/TextInput';
 import FileUploader from './components/FileUploader';
 import MingliMeter from './components/MingliMeter';
 import BurnButton from './components/BurnButton';
 import CompletionScreen from './components/CompletionScreen';
+import BurnProgress from './components/BurnProgress';
+import AshParticles from './components/AshParticles';
 import { useBurnCeremony } from './hooks/useBurnCeremony';
 import { useMingli } from './hooks/useMingli';
 import { mingliToFlameIntensity } from './lib/mingliCalculator';
 
 function App() {
   const {
-    textInput, setTextInput,
-    files, setFiles,
+    textInput,
+    setTextInput,
+    files,
+    setFiles,
     mingli,
+    details,
+    level,
+    isCalculating,
   } = useMingli();
 
-  const { state, burn, reset } = useBurnCeremony();
+  const { state, burn, reset, totalBurns, networkStatus } = useBurnCeremony();
   const [burnChars, setBurnChars] = useState<string[]>([]);
+  const [statsLoaded, setStatsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (totalBurns > 0) {
+      setStatsLoaded(true);
+    }
+  }, [totalBurns]);
 
   const isIdle = state.phase === 'idle';
-  const isBurning = state.phase === 'igniting' || state.phase === 'burning' || state.phase === 'fading';
+  const isBurning = ['igniting', 'burning', 'fading'].includes(state.phase);
   const isDone = state.phase === 'done';
 
+  const intensity = useMemo(() => mingliToFlameIntensity(mingli), [mingli]);
+  const flameIntensity = isDone ? 0.08 : isBurning ? Math.min(intensity * 1.35 + 0.08, 1) : Math.max(intensity, 0.05);
+
+  const handleAddFiles = useCallback((newFiles: File[]) => {
+    setFiles((current) => [...current, ...newFiles]);
+  }, [setFiles]);
+
+  const handleRemoveFile = useCallback((index: number) => {
+    setFiles((current) => current.filter((_, idx) => idx !== index));
+  }, [setFiles]);
+
   const handleBurn = useCallback(() => {
-    const chars = textInput.split('').filter(c => c.trim());
+    const chars = textInput.split('').filter((char) => char.trim());
     setBurnChars(chars);
-    burn(textInput, files, mingli);
-  }, [textInput, files, mingli, burn]);
+    void burn(textInput, files, mingli);
+  }, [burn, files, mingli, textInput]);
 
   const handleReset = useCallback(() => {
     reset();
     setTextInput('');
     setFiles([]);
     setBurnChars([]);
-  }, [reset, setTextInput, setFiles]);
-
-  const intensity = mingliToFlameIntensity(mingli);
-  const flameIntensity = isBurning
-    ? Math.min(intensity * 1.3, 1.0)
-    : isIdle ? intensity : 0;
+  }, [reset, setFiles, setTextInput]);
 
   return (
-    <div
-      className="relative min-h-screen bg-black text-gray-200 overflow-hidden"
-      style={{ fontFamily: "'Noto Serif SC', serif" }}
-    >
-      {/* Background radial glow */}
-      <div className="fixed inset-0 pointer-events-none" style={{
-        background: 'radial-gradient(ellipse at 50% 100%, rgba(80,10,0,0.15) 0%, rgba(0,0,0,0) 70%)',
-        zIndex: 0,
-      }} />
+    <div className="relative min-h-screen overflow-hidden bg-[#120c0a] text-stone-100">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(139,69,19,0.16),_transparent_30%),radial-gradient(circle_at_bottom,_rgba(255,94,0,0.2),_transparent_40%),linear-gradient(180deg,_#1b1410_0%,_#0e0907_100%)]" />
+      <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize: '100% 32px' }} />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-52 bg-[radial-gradient(circle,_rgba(255,214,170,0.08),_transparent_70%)]" />
 
-      {/* Ambient ash particles */}
-      <div className="fixed inset-0 pointer-events-none z-[1] overflow-hidden">
-        {Array.from({ length: 15 }).map((_, i) => (
-          <div
-            key={i}
-            className="absolute rounded-full"
-            style={{
-              width: `${2 + Math.random() * 3}px`,
-              height: `${2 + Math.random() * 3}px`,
-              background: `rgba(${100 + Math.random() * 80}, ${40 + Math.random() * 30}, ${10 + Math.random() * 20}, ${0.1 + Math.random() * 0.2})`,
-              left: `${Math.random() * 100}%`,
-              bottom: '-5%',
-              animation: `ambientAsh ${8 + Math.random() * 12}s linear ${Math.random() * 8}s infinite`,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Flame Canvas */}
       <FlameCanvas intensity={flameIntensity} burning={state.phase === 'burning'} />
+      <AshParticles active={isBurning || isDone} count={isDone ? 44 : 24} />
 
-      {/* Main Content */}
-      <div className="relative z-10 min-h-screen flex flex-col">
-        {/* Header */}
-        <header className="pt-10 md:pt-16 pb-4 text-center">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-[0.2em] text-transparent bg-clip-text"
-            style={{
-              backgroundImage: 'linear-gradient(180deg, #ffcc44 0%, #ff6600 50%, #cc2200 100%)',
-            }}
-          >
-            赛博烧纸
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-6 md:px-8 md:py-10">
+        <header className="mb-6 text-center md:mb-10">
+          <div className="mx-auto mb-4 inline-flex items-center gap-3 rounded-full border border-[#6a2f16]/60 bg-black/25 px-4 py-2 text-xs tracking-[0.35em] text-amber-200/80 shadow-[0_0_40px_rgba(255,120,0,0.08)] backdrop-blur-sm">
+            <span>赛博烧纸</span>
+            <span className="text-stone-500">·</span>
+            <span>CyberJoss Ritual</span>
+          </div>
+          <h1 className="text-4xl font-semibold tracking-[0.35em] text-transparent md:text-6xl" style={{ backgroundImage: 'linear-gradient(180deg, #fff2d6 0%, #f9b15d 32%, #d36622 68%, #7f2e11 100%)', WebkitBackgroundClip: 'text' }}>
+            灼纸寄思
           </h1>
-          <p className="text-gray-600 text-xs md:text-sm mt-2 tracking-[0.15em]">
-            CyberJoss · 让思念化为数字之灰
+          <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-stone-300/78 md:text-base">
+            以中国风祭台承载思念，以火焰吞没文字与影像。你写下的祭文、上传的纸品，将在一场安静而庄重的数字焚化中消散于赛博空间。
           </p>
         </header>
 
-        {/* Content Area */}
-        <main className="flex-1 flex flex-col items-center justify-center px-4 pb-6 max-w-lg mx-auto w-full">
-          {isIdle && (
-            <div className="w-full space-y-5 animate-fadeIn">
-              {/* Text Input */}
+        <main className="grid flex-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <section className="relative overflow-hidden rounded-[28px] border border-[#6d3417]/60 bg-black/30 p-5 shadow-[0_0_80px_rgba(0,0,0,0.28)] backdrop-blur-md md:p-7">
+            <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/40 to-transparent" />
+            <div className="absolute inset-y-10 left-0 w-px bg-gradient-to-b from-transparent via-red-800/30 to-transparent" />
+            <div className="absolute inset-y-10 right-0 w-px bg-gradient-to-b from-transparent via-red-800/30 to-transparent" />
+
+            <div className="mb-6 flex items-center justify-between">
               <div>
-                <label className="text-gray-500 text-xs mb-2 block tracking-wider">📝 祭文</label>
-                <TextInput value={textInput} onChange={setTextInput} />
+                <p className="text-xs tracking-[0.25em] text-stone-500">祭文台</p>
+                <h2 className="mt-2 text-xl text-amber-50">写下想说的话</h2>
               </div>
-
-              {/* File Uploader */}
-              <FileUploader
-                files={files}
-                onFilesChange={setFiles}
-                disabled={false}
-              />
-
-              {/* Mingli Meter */}
-              <MingliMeter mingli={mingli} phase={state.phase} />
-
-              {/* Burn Button */}
-              <BurnButton
-                onClick={handleBurn}
-                disabled={mingli <= 0}
-                mingli={mingli}
-              />
-
-              {/* Footer note */}
-              <p className="text-center text-gray-800 text-[10px] leading-relaxed mt-4">
-                数据经 WebSocket 传输后通过 UDP 消散于 RFC 5737 虚空地址<br />
-                服务端不记录任何内容，无日志，无数据库
-              </p>
+              <div className="rounded-full border border-amber-700/30 bg-amber-950/20 px-3 py-1 text-xs text-amber-200/80">
+                {level.name}
+              </div>
             </div>
-          )}
 
-          {/* Igniting / Burning Phase */}
-          {(state.phase === 'igniting' || state.phase === 'burning') && (
-            <div className="w-full max-w-md">
-              {/* Progress */}
-              <div className="text-center mb-6">
-                <div className="text-orange-500 text-sm tracking-[0.2em] animate-pulse font-serif">
-                  {state.phase === 'igniting'
-                    ? '点 火 中 ···'
-                    : `焚 烧 中 ··· ${state.packetsSent}/${state.totalPackets}`
-                  }
-                </div>
-                {state.phase === 'burning' && (
-                  <div className="mt-3 h-1 bg-gray-900 rounded-full overflow-hidden max-w-xs mx-auto border border-gray-800">
-                    <div
-                      className="h-full rounded-full transition-all duration-200"
-                      style={{
-                        width: `${state.progress * 100}%`,
-                        background: 'linear-gradient(90deg, #cc2200, #ff5500, #ffaa00)',
-                        boxShadow: '0 0 10px rgba(255,85,0,0.4)',
-                      }}
-                    />
+            {isIdle && (
+              <div className="space-y-5">
+                <TextInput value={textInput} onChange={setTextInput} disabled={!isIdle} />
+                <FileUploader files={files} onAddFiles={handleAddFiles} onRemoveFile={handleRemoveFile} disabled={!isIdle} />
+                <MingliMeter mingli={mingli} levelName={level.name} details={details} isCalculating={isCalculating} />
+                <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+                  <BurnButton onClick={handleBurn} disabled={mingli <= 0 || isCalculating} />
+                  <div className="rounded-2xl border border-[#6d3417]/50 bg-[#1c120f]/80 px-4 py-3 text-xs leading-6 text-stone-400">
+                    <p>· 文字每 100 字约为 1 冥力</p>
+                    <p>· 图片每张 5 冥力</p>
+                    <p>· 焚化完成后前端即刻清空内容</p>
                   </div>
-                )}
-              </div>
-
-              {/* Text being consumed by fire */}
-              {burnChars.length > 0 && (
-                <div className="relative min-h-[120px] overflow-hidden flex flex-wrap justify-center items-center gap-[2px] px-2">
-                  {burnChars.map((char, i) => {
-                    const progress = state.phase === 'burning'
-                      ? (i / burnChars.length) * state.progress + state.progress * 0.3
-                      : 0;
-                    const consumed = progress > (i / burnChars.length);
-
-                    return (
-                      <span
-                        key={i}
-                        className="inline-block text-base md:text-lg transition-all duration-700 ease-out"
-                        style={{
-                          opacity: consumed ? 0 : 0.9,
-                          color: consumed ? '#ff2200' : '#d4d4d4',
-                          textShadow: consumed
-                            ? '0 0 8px #ff4400, 0 0 16px #ff2200, 0 0 24px #ff0000'
-                            : 'none',
-                          transform: consumed ? 'translateY(-40px) scale(0.3)' : 'translateY(0)',
-                          filter: consumed ? 'blur(3px)' : 'none',
-                        }}
-                      >
-                        {char}
-                      </span>
-                    );
-                  })}
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Fading Phase */}
-          {state.phase === 'fading' && (
-            <div className="text-center space-y-4">
-              <p className="text-gray-600 text-sm tracking-[0.3em] animate-pulse font-serif">
-                余 烬 消 散 中 ···
-              </p>
-              {/* Fading ash */}
-              <div className="relative h-20 overflow-hidden">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="absolute w-1 h-1 rounded-full bg-gray-600/50"
-                    style={{
-                      left: `${20 + Math.random() * 60}%`,
-                      bottom: '0',
-                      animation: `fadeAsh ${1.5 + Math.random() * 2}s ease-out ${Math.random() * 1}s forwards`,
-                    }}
-                  />
-                ))}
               </div>
-            </div>
-          )}
+            )}
+
+            {!isIdle && !isDone && (
+              <div className="flex min-h-[480px] flex-col justify-between">
+                <div className="space-y-6">
+                  <BurnProgress state={state} mingli={mingli} />
+                  <div className="rounded-[24px] border border-[#6d3417]/40 bg-[#1a110e]/60 p-5">
+                    <p className="mb-4 text-center text-xs tracking-[0.28em] text-stone-500">火中书影</p>
+                    <div className="min-h-[220px] overflow-hidden rounded-2xl border border-white/5 bg-black/20 p-4">
+                      <div className="flex flex-wrap justify-center gap-x-1 gap-y-2">
+                        {burnChars.length > 0 ? burnChars.map((char, index) => {
+                          const threshold = burnChars.length === 0 ? 0 : index / burnChars.length;
+                          const consumed = state.progress >= Math.max(0, threshold - 0.05);
+                          return (
+                            <span
+                              key={`${char}-${index}`}
+                              className="text-lg transition-all duration-700 md:text-2xl"
+                              style={{
+                                opacity: consumed ? 0.06 : 0.95,
+                                transform: consumed ? 'translateY(-28px) scale(0.68) rotate(-6deg)' : 'translateY(0) scale(1)',
+                                color: consumed ? '#f97316' : '#f5e7cf',
+                                textShadow: consumed ? '0 0 10px rgba(249,115,22,0.9), 0 0 25px rgba(220,38,38,0.55)' : '0 0 8px rgba(255,255,255,0.05)',
+                                filter: consumed ? 'blur(2px)' : 'none',
+                              }}
+                            >
+                              {char}
+                            </span>
+                          );
+                        }) : (
+                          <div className="py-16 text-center text-sm text-stone-500">纸灰无字，火焰正吞没你上传的纸品与记忆。</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[24px] border border-[#6d3417]/40 bg-black/25 p-4 text-center text-sm text-stone-400">
+                  <p>{networkStatus}</p>
+                </div>
+              </div>
+            )}
+
+            {isDone && (
+              <div className="flex min-h-[520px] items-center justify-center">
+                <CompletionScreen
+                  totalBurns={totalBurns}
+                  onRestart={handleReset}
+                  packetsSent={state.packetsSent}
+                  mingli={mingli}
+                />
+              </div>
+            )}
+          </section>
+
+          <aside className="flex flex-col gap-6">
+            <section className="rounded-[28px] border border-[#6d3417]/60 bg-black/25 p-5 backdrop-blur-md md:p-6">
+              <p className="text-xs tracking-[0.25em] text-stone-500">焚化注解</p>
+              <h3 className="mt-2 text-xl text-amber-50">中国风仪式界面</h3>
+              <div className="mt-4 space-y-4 text-sm leading-7 text-stone-300/80">
+                <p>界面以深木色、烬红、琥珀金为主色，营造供桌、灯火、纸灰交织的氛围。火焰采用 WebGL shader 叠加云烟和火星，让视觉层次更接近真实燃纸。</p>
+                <p>冥力越高，火势越大，燃烧速度越快；高强度时会出现飞火、热浪和更亮的焰芯，保留你方案里的“烈焰”反馈。</p>
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border border-[#6d3417]/60 bg-black/25 p-5 backdrop-blur-md md:p-6">
+              <p className="text-xs tracking-[0.25em] text-stone-500">焚后归处</p>
+              <div className="mt-4 space-y-3 text-sm leading-7 text-stone-300/75">
+                <p>· 数据通过 WebSocket 分片传输</p>
+                <p>· 服务端只做转发，不留正文</p>
+                <p>· 通过 UDP 投向 RFC 5737 虚空地址</p>
+                <p>· 仅保留焚烧总次数，作为众生思念的数字计数</p>
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border border-[#6d3417]/60 bg-black/25 p-5 backdrop-blur-md md:p-6">
+              <p className="text-xs tracking-[0.25em] text-stone-500">当前香火</p>
+              <div className="mt-4 flex items-end justify-between gap-4">
+                <div>
+                  <div className="text-4xl text-amber-100 tabular-nums">{statsLoaded ? totalBurns.toLocaleString() : '—'}</div>
+                  <div className="mt-2 text-sm text-stone-400">已消散思念总数</div>
+                </div>
+                <div className="rounded-2xl border border-amber-700/30 bg-amber-950/20 px-4 py-3 text-right text-xs leading-6 text-amber-100/75">
+                  <div>火焰等级</div>
+                  <div className="text-base text-amber-200">{level.name}</div>
+                </div>
+              </div>
+            </section>
+          </aside>
         </main>
 
-        {/* Footer */}
-        {isIdle && (
-          <footer className="py-4 text-center">
-            <p className="text-gray-800 text-[10px] tracking-wider font-serif">
-              「死亡不是终点，遗忘才是。」
-            </p>
-          </footer>
-        )}
+        <footer className="mt-8 text-center text-xs leading-6 text-stone-500">
+          <p>「火光向上，思念无形。」</p>
+          <p>本应用默认不记录焚烧正文、文件内容与传输明细，仅展示仪式状态与焚烧总次数。</p>
+        </footer>
       </div>
-
-      {/* Completion Screen */}
-      {isDone && (
-        <CompletionScreen
-          mingli={mingli}
-          packetsSent={state.packetsSent}
-          onReset={handleReset}
-        />
-      )}
-
-      <style>{`
-        @keyframes ambientAsh {
-          0% { transform: translateY(0) translateX(0) rotate(0deg); opacity: 0; }
-          5% { opacity: 0.8; }
-          95% { opacity: 0.3; }
-          100% { transform: translateY(-110vh) translateX(30px) rotate(360deg); opacity: 0; }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes fadeAsh {
-          0% { transform: translateY(0) translateX(0); opacity: 0.6; }
-          100% { transform: translateY(-80px) translateX(${Math.random() > 0.5 ? '' : '-'}20px); opacity: 0; }
-        }
-        .animate-fadeIn { animation: fadeIn 0.8s ease-out; }
-      `}</style>
     </div>
   );
 }
