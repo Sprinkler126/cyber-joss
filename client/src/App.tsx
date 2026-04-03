@@ -306,14 +306,7 @@ function App() {
         onChange={handleFileInput}
       />
 
-      {/* ─── Atmospheric Background ─── */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_85%,rgba(120,50,10,0.12),transparent),radial-gradient(ellipse_60%_40%_at_50%_100%,rgba(180,60,0,0.10),transparent),linear-gradient(180deg,#080504_0%,#0a0706_40%,#0e0908_100%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.6)_100%)]" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[55vh] bg-[radial-gradient(ellipse_50%_60%_at_50%_100%,rgba(180,80,10,0.18),transparent_65%)]" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[35vh] bg-[linear-gradient(180deg,transparent_0%,rgba(30,18,12,0.5)_40%,rgba(8,5,4,0.95)_100%)]" />
-      <div className="pointer-events-none absolute bottom-[6%] left-1/2 h-[90px] w-[40%] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse,rgba(200,80,20,0.15)_0%,rgba(120,40,10,0.08)_40%,transparent_72%)] blur-sm" />
-
-      {/* ─── FIRE (all shader) ─── */}
+      {/* ─── FIRE — full‑screen shader renders both background AND flame ─── */}
       <FlameCanvas
         intensity={flameIntensity}
         burning={state.phase === 'burning'}

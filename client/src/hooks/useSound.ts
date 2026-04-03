@@ -83,17 +83,17 @@ export function useSound({ phase, burningIntensity, fireStage, dragSense = 0 }: 
       }),
       paperIgnite: new Howl({
         src: ['/sounds/paper-ignite.wav'],
-        volume: 0.65,
+        volume: 0.35,
         preload: true,
       }),
       emberSettle: new Howl({
         src: ['/sounds/ember-settle.wav'],
-        volume: 0.45,
+        volume: 0.25,
         preload: true,
       }),
       bell: new Howl({
         src: ['/sounds/bell.wav'],
-        volume: 0.4,
+        volume: 0.3,
         preload: true,
       }),
     };
@@ -131,33 +131,32 @@ export function useSound({ phase, burningIntensity, fireStage, dragSense = 0 }: 
       let targetCrackle = 0;
 
       if (stage === 'idle') {
-        targetSmall = 0.10;
+        targetSmall = 0.06;
         targetMedium = 0;
         targetLarge = 0;
         targetCrackle = 0;
       } else if (stage === 'small') {
-        targetSmall = lerp(0.18, 0.30, intensity);
-        targetMedium = lerp(0, 0.08, intensity);
+        targetSmall = lerp(0.10, 0.18, intensity);
+        targetMedium = lerp(0, 0.05, intensity);
         targetLarge = 0;
-        targetCrackle = lerp(0.05, 0.14, intensity);
+        targetCrackle = lerp(0.02, 0.07, intensity);
       } else if (stage === 'medium') {
-        targetSmall = 0.14;
-        targetMedium = lerp(0.22, 0.38, intensity);
-        targetLarge = lerp(0, 0.12, intensity);
-        targetCrackle = lerp(0.12, 0.28, intensity);
-      } else if (stage === 'large') {
         targetSmall = 0.08;
-        targetMedium = 0.18;
-        targetLarge = lerp(0.30, 0.55, intensity);
-        targetCrackle = lerp(0.20, 0.42, intensity);
+        targetMedium = lerp(0.12, 0.22, intensity);
+        targetLarge = lerp(0, 0.06, intensity);
+        targetCrackle = lerp(0.05, 0.14, intensity);
+      } else if (stage === 'large') {
+        targetSmall = 0.05;
+        targetMedium = 0.10;
+        targetLarge = lerp(0.18, 0.32, intensity);
+        targetCrackle = lerp(0.10, 0.22, intensity);
       }
 
       // Drag proximity: boost crackling as paper approaches fire
       if (ds > 0.1) {
-        targetCrackle = Math.max(targetCrackle, ds * 0.25);
-        targetSmall = Math.max(targetSmall, 0.10 + ds * 0.10);
-        // Slight medium boost
-        targetMedium = Math.max(targetMedium, ds * 0.12);
+        targetCrackle = Math.max(targetCrackle, ds * 0.10);
+        targetSmall = Math.max(targetSmall, 0.06 + ds * 0.06);
+        targetMedium = Math.max(targetMedium, ds * 0.06);
       }
 
       // Smooth fade towards targets
@@ -224,14 +223,14 @@ export function useSound({ phase, burningIntensity, fireStage, dragSense = 0 }: 
   const playContactBurst = useCallback(() => {
     const s = soundsRef.current;
     if (!s || !enabled) return;
-    // Play ignite at higher volume for the "contact" moment
-    s.paperIgnite.volume(0.85);
-    s.paperIgnite.rate(1.15);
+    // Play ignite at moderate volume for the "contact" moment
+    s.paperIgnite.volume(0.45);
+    s.paperIgnite.rate(1.1);
     s.paperIgnite.stop();
     s.paperIgnite.play();
-    // Temporarily spike crackle volume
-    s.paperCrackle.volume(Math.min(0.55, s.paperCrackle.volume() + 0.25));
-    s.paperCrackle.rate(1.2);
+    // Briefly spike crackle volume
+    s.paperCrackle.volume(Math.min(0.28, s.paperCrackle.volume() + 0.12));
+    s.paperCrackle.rate(1.1);
   }, [enabled]);
 
   const toggle = useCallback(() => {

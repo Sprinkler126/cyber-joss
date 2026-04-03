@@ -23,7 +23,7 @@ function FlameCanvas({ intensity, burning, dropPulse, ashAmount, dragSense, cumu
 
   const uniformsRef = useRef({
     uTime: { value: 0 },
-    uIntensity: { value: 0 },
+    uIntensity: { value: 0.18 },    // start with idle flame visible immediately
     uResolution: { value: new THREE.Vector2(1, 1) },
     uBurning: { value: 0 },
     uDropPulse: { value: 0 },
@@ -36,7 +36,15 @@ function FlameCanvas({ intensity, burning, dropPulse, ashAmount, dragSense, cumu
     const container = containerRef.current;
     if (!container) return;
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    // Use NON-transparent renderer with black clear color.
+    // The fire shader writes its own background (mostly transparent black)
+    // and we use NormalBlending so alpha composites correctly.
+    const renderer = new THREE.WebGLRenderer({
+      alpha: false,
+      antialias: false,          // performance: fullscreen shader doesn't need AA
+      premultipliedAlpha: false,
+    });
+    renderer.setClearColor(0x000000, 1);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight);
     container.appendChild(renderer.domElement);
@@ -48,9 +56,9 @@ function FlameCanvas({ intensity, burning, dropPulse, ashAmount, dragSense, cumu
       vertexShader: flameVert,
       fragmentShader: flameFrag,
       uniforms: uniformsRef.current,
-      transparent: true,
+      transparent: false,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
     });
     const mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
@@ -71,12 +79,12 @@ function FlameCanvas({ intensity, burning, dropPulse, ashAmount, dragSense, cumu
       const u = uniformsRef.current;
       u.uTime.value = clock.getElapsedTime();
       // Smooth interpolation for all uniforms
-      u.uIntensity.value += (targetRef.current - u.uIntensity.value) * 0.045;
-      u.uBurning.value += ((burningRef.current ? 1 : 0) - u.uBurning.value) * 0.07;
-      u.uDropPulse.value += (dropPulseRef.current - u.uDropPulse.value) * 0.12;
-      u.uAshAmount.value += (ashRef.current - u.uAshAmount.value) * 0.03;
-      u.uDragSense.value += (dragSenseRef.current - u.uDragSense.value) * 0.08;
-      u.uCumulative.value += (cumulativeRef.current - u.uCumulative.value) * 0.025;
+      u.uIntensity.value += (targetRef.current - u.uIntensity.value) * 0.06;
+      u.uBurning.value += ((burningRef.current ? 1 : 0) - u.uBurning.value) * 0.08;
+      u.uDropPulse.value += (dropPulseRef.current - u.uDropPulse.value) * 0.14;
+      u.uAshAmount.value += (ashRef.current - u.uAshAmount.value) * 0.04;
+      u.uDragSense.value += (dragSenseRef.current - u.uDragSense.value) * 0.10;
+      u.uCumulative.value += (cumulativeRef.current - u.uCumulative.value) * 0.03;
       renderer.render(scene, camera);
       frame = window.requestAnimationFrame(render);
     };
@@ -101,7 +109,7 @@ function FlameCanvas({ intensity, burning, dropPulse, ashAmount, dragSense, cumu
   useEffect(() => { dragSenseRef.current = dragSense; }, [dragSense]);
   useEffect(() => { cumulativeRef.current = cumulativeBurns; }, [cumulativeBurns]);
 
-  return <div ref={containerRef} className="pointer-events-none absolute inset-0 z-0" />;
+  return <div ref={containerRef} className="pointer-events-none absolute inset-0 z-[1]" />;
 }
 
 export default memo(FlameCanvas);
