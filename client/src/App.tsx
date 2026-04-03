@@ -4,7 +4,7 @@ import PaperCard from './components/PaperCard';
 import type { PaperPhase } from './components/PaperCard';
 import BurnProgress from './components/BurnProgress';
 import CompletionScreen from './components/CompletionScreen';
-import { useBurnCeremony } from './hooks/useBurnCeremony';
+import { useBurnCeremony, calculateBurnParams } from './hooks/useBurnCeremony';
 import { useMingli } from './hooks/useMingli';
 import { useSound, FireStage } from './hooks/useSound';
 import { mingliToFlameIntensity } from './lib/mingliCalculator';
@@ -133,27 +133,36 @@ function App() {
   // ─── Floating text effect: firefly-like glowing text rising slowly ───
   useEffect(() => {
     if (state.currentText && isBurning) {
+      // 根据总包数动态调整动画参数
+      const params = calculateBurnParams(state.totalPackets);
+      
       // Split the text into individual chars and create floating text for each
       const chars = state.currentText.split('');
       chars.forEach((char, idx) => {
         setTimeout(() => {
           const id = ++floatingIdRef.current;
-          const x = 45 + (Math.random() - 0.5) * 30; // 更宽的范围 ±15%
-          const y = 75 + Math.random() * 10; // 从火焰底部开始，略有随机
+          const x = 45 + (Math.random() - 0.5) * 30;
+          const y = 75 + Math.random() * 10;
           
-          setFloatingTexts(prev => [...prev, { 
-            id, 
-            char, 
-            x, 
-            y, 
-            opacity: 0.8 + Math.random() * 0.2, 
-            scale: 0.8 + Math.random() * 0.4 
-          }]);
+          setFloatingTexts(prev => {
+            // 限制同时显示的飘浮字数，避免卡顿
+            const filtered = prev.length >= params.maxConcurrentFloats 
+              ? prev.slice(prev.length - params.maxConcurrentFloats + 1) 
+              : prev;
+            return [...filtered, { 
+              id, 
+              char, 
+              x, 
+              y, 
+              opacity: 0.8 + Math.random() * 0.2, 
+              scale: 0.8 + Math.random() * 0.4 
+            }];
+          });
           
-          // Firefly-like animation: slow rise with twinkling
-          const duration = 4000 + Math.random() * 2000; // 4-6秒，更慢
+          // Firefly-like animation with dynamic duration
+          const duration = params.animationDuration;
           const startTime = Date.now();
-          const twinkleSpeed = 3 + Math.random() * 4; // 闪烁速度
+          const twinkleSpeed = 2 + Math.random() * 3;
           
           const animate = () => {
             const elapsed = Date.now() - startTime;
@@ -165,16 +174,16 @@ function App() {
             }
             
             // Firefly twinkling effect
-            const twinkle = Math.sin(elapsed * 0.01 * twinkleSpeed) * 0.3 + 0.7;
-            const fadeOut = Math.max(0, 1 - Math.pow(progress, 2) * 0.8); // 更慢的淡出
+            const twinkle = Math.sin(elapsed * 0.008 * twinkleSpeed) * 0.25 + 0.75;
+            const fadeOut = Math.max(0, 1 - Math.pow(progress, 1.5) * 0.7);
             
             setFloatingTexts(prev => prev.map(t => {
               if (t.id !== id) return t;
               return {
                 ...t,
-                y: y - progress * 50, // 向上飘 50%，更慢
-                opacity: fadeOut * twinkle, // 闪烁 + 渐隐
-                scale: (0.8 + progress * 0.3) * (0.9 + twinkle * 0.2), // 轻微缩放波动
+                y: y - progress * 45,
+                opacity: fadeOut * twinkle,
+                scale: (0.8 + progress * 0.25) * (0.92 + twinkle * 0.15),
               };
             }));
             
@@ -182,10 +191,10 @@ function App() {
           };
           
           requestAnimationFrame(animate);
-        }, idx * 150); // 每个字间隔150ms出现
+        }, idx * 120); // 动态间隔
       });
     }
-  }, [state.currentText, isBurning]);
+  }, [state.currentText, isBurning, state.totalPackets]);
 
   // Reset
   const handleReset = useCallback(() => {

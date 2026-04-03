@@ -14,6 +14,47 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * 动态调节参数，避免大文件时卡顿
+ * 根据总包数调整：抽取字数、动画时长、发送间隔
+ */
+export function calculateBurnParams(totalPackets: number) {
+  // 小文件：仪式感优先；大文件：性能优先
+  if (totalPackets <= 15) {
+    // 小文件：丰富的视觉效果
+    return {
+      charsPerPacket: 3 + Math.floor(Math.random() * 2), // 3-4 字
+      packetDelay: 400, // 较慢，有仪式感
+      animationDuration: 4000 + Math.random() * 2000, // 4-6秒
+      maxConcurrentFloats: 20, // 同时显示的字数上限
+    };
+  } else if (totalPackets <= 50) {
+    // 中等文件：平衡
+    return {
+      charsPerPacket: 2,
+      packetDelay: 180,
+      animationDuration: 3000 + Math.random() * 1000, // 3-4秒
+      maxConcurrentFloats: 15,
+    };
+  } else if (totalPackets <= 150) {
+    // 大文件：减少效果
+    return {
+      charsPerPacket: 1,
+      packetDelay: 80,
+      animationDuration: 2000 + Math.random() * 500, // 2-2.5秒
+      maxConcurrentFloats: 10,
+    };
+  } else {
+    // 超大文件：最小效果，保证流畅
+    return {
+      charsPerPacket: 1,
+      packetDelay: 40,
+      animationDuration: 1500, // 1.5秒
+      maxConcurrentFloats: 5,
+    };
+  }
+}
+
 function buildWsUrl() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host = import.meta.env.VITE_SERVER_HOST?.trim();
@@ -65,6 +106,18 @@ export function useBurnCeremony() {
    * If already burning, seamlessly extends the queue (fire keeps going).
    */
   const feedFiles = useCallback(async (textInput: string, files: File[], totalMingli: number) => {
+    // 先估算总包数，用于动态调节
+    let estimatedChunks = 0;
+    if (textInput.trim()) {
+      estimatedChunks += Math.ceil(textInput.length / 120);
+    }
+    for (const file of files) {
+      estimatedChunks += Math.ceil(file.size / 2048);
+    }
+    
+    // 获取动态参数
+    const params = calculateBurnParams(estimatedChunks);
+    
     // Chunk the input
     const newChunks: ArrayBuffer[] = [];
     const newTextChunks: string[] = []; // 对应的文本片段
@@ -72,13 +125,13 @@ export function useBurnCeremony() {
     if (textInput.trim()) {
       for (let i = 0; i < textInput.length; i += 120) {
         newChunks.push(new TextEncoder().encode(textInput.slice(i, i + 120)).buffer);
-        // 随机抽取 2-4 个字符作为飘浮文本
+        // 根据包数动态调整抽取字数
         const chunkText = textInput.slice(i, i + 120);
         const chars = chunkText.split('').filter(c => c.trim());
         if (chars.length > 0) {
-          const numChars = 2 + Math.floor(Math.random() * 3); // 2-4 个字符
+          const numChars = Math.min(params.charsPerPacket, chars.length);
           let selectedChars = '';
-          for (let j = 0; j < numChars && j < chars.length; j++) {
+          for (let j = 0; j < numChars; j++) {
             const randomIdx = Math.floor(Math.random() * chars.length);
             selectedChars += chars[randomIdx];
           }
@@ -94,11 +147,11 @@ export function useBurnCeremony() {
       const text = new TextDecoder().decode(buf);
       for (let i = 0; i < buf.byteLength; i += 2048) {
         newChunks.push(buf.slice(i, i + 2048));
-        // 从每个块中随机抽取 2-4 个字符
+        // 根据包数动态调整抽取字数
         const chunkText = text.slice(i, i + 2048);
         const chars = chunkText.split('').filter(c => c.trim() && c.charCodeAt(0) > 127);
         let selectedChars = '';
-        const numChars = 2 + Math.floor(Math.random() * 3);
+        const numChars = params.charsPerPacket;
         
         if (chars.length > 0) {
           for (let j = 0; j < numChars && j < chars.length; j++) {
@@ -187,18 +240,11 @@ export function useBurnCeremony() {
         currentText: textChunk,
       }));
 
-      // Adaptive delay: slower for more ceremony feel
+      // 使用动态调节的参数
       const remainingPackets = queueRef.current.length;
       const totalPackets = sent + remainingPackets;
-      let delayMs: number;
-      if (totalPackets < 10) {
-        delayMs = 400; // Small file: very slow, more ceremony
-      } else if (totalPackets < 30) {
-        delayMs = 180; // Medium file: slow
-      } else {
-        delayMs = 60; // Large file: moderate speed
-      }
-      await sleep(delayMs);
+      const params = calculateBurnParams(totalPackets);
+      await sleep(params.packetDelay);
     }
 
     // Fading
