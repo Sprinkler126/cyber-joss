@@ -121,11 +121,11 @@ export async function calculateMingli(textInput: string, files: File[]): Promise
 }
 
 export function mingliToFlameIntensity(mingli: number): number {
-  if (mingli <= 0) return 0;
-  if (mingli <= 5) return 0.18;
-  if (mingli <= 20) return 0.38;
-  if (mingli <= 50) return 0.62;
-  if (mingli <= 100) return 0.85;
+  if (mingli <= 0) return 0.65;  // Default visible idle flame
+  if (mingli <= 5) return 0.75;
+  if (mingli <= 20) return 0.85;
+  if (mingli <= 50) return 0.92;
+  if (mingli <= 100) return 0.98;
   return 1;
 }
 

@@ -81,10 +81,10 @@ function App() {
   const baseIntensity = useMemo(() => mingliToFlameIntensity(mingli), [mingli]);
 
   const flameIntensity = isDone
-    ? 0.15
+    ? 0.35
     : isBurning
-      ? Math.min(baseIntensity * 1.5 + 0.15, 1)
-      : Math.max(0.18, baseIntensity * 0.85 + (files.length > 0 || textInput.trim() ? 0.12 : 0));
+      ? Math.min(baseIntensity * 1.5 + 0.25, 1)
+      : Math.max(0.55, baseIntensity * 0.9 + (files.length > 0 || textInput.trim() ? 0.15 : 0.25));
 
   const fireStage = getFireStage(mingli, isBurning);
 

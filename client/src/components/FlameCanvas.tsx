@@ -23,7 +23,7 @@ function FlameCanvas({ intensity, burning, dropPulse, ashAmount, dragSense, cumu
 
   const uniformsRef = useRef({
     uTime: { value: 0 },
-    uIntensity: { value: 0.18 },    // start with idle flame visible immediately
+    uIntensity: { value: 0.6 },    // start with prominent idle flame visible immediately
     uResolution: { value: new THREE.Vector2(1, 1) },
     uBurning: { value: 0 },
     uDropPulse: { value: 0 },

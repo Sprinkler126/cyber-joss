@@ -1,7 +1,6 @@
-#version 300 es
 precision highp float;
 
-out vec2 vUv;
+varying vec2 vUv;
 
 void main() {
   vUv = uv;
