@@ -4,19 +4,26 @@ import flameVert from '../shaders/flame.vert?raw';
 import flameFrag from '../shaders/flame.frag?raw';
 
 interface FlameCanvasProps {
-  intensity: number;
-  burning: boolean;
+  intensity: number;    // 0..1 fire size
+  burning: boolean;     // active burn phase
+  dropPulse: number;    // 0..1 flashes on file drop, decays externally
+  ashAmount: number;    // 0..1 accumulated ash on ground
 }
 
-function FlameCanvas({ intensity, burning }: FlameCanvasProps) {
+function FlameCanvas({ intensity, burning, dropPulse, ashAmount }: FlameCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const targetRef = useRef(intensity);
   const burningRef = useRef(burning);
+  const dropPulseRef = useRef(dropPulse);
+  const ashRef = useRef(ashAmount);
+
   const uniformsRef = useRef({
     uTime: { value: 0 },
     uIntensity: { value: 0 },
     uResolution: { value: new THREE.Vector2(1, 1) },
     uBurning: { value: 0 },
+    uDropPulse: { value: 0 },
+    uAshAmount: { value: 0 },
   });
 
   useEffect(() => {
@@ -43,12 +50,11 @@ function FlameCanvas({ intensity, burning }: FlameCanvasProps) {
     scene.add(mesh);
 
     const resize = () => {
-      const width = container.clientWidth || window.innerWidth;
-      const height = container.clientHeight || window.innerHeight;
-      renderer.setSize(width, height);
-      uniformsRef.current.uResolution.value.set(width, height);
+      const w = container.clientWidth || window.innerWidth;
+      const h = container.clientHeight || window.innerHeight;
+      renderer.setSize(w, h);
+      uniformsRef.current.uResolution.value.set(w, h);
     };
-
     resize();
     window.addEventListener('resize', resize);
 
@@ -56,13 +62,16 @@ function FlameCanvas({ intensity, burning }: FlameCanvasProps) {
     let frame = 0;
 
     const render = () => {
-      uniformsRef.current.uTime.value = clock.getElapsedTime();
-      uniformsRef.current.uIntensity.value += (targetRef.current - uniformsRef.current.uIntensity.value) * 0.05;
-      uniformsRef.current.uBurning.value += ((burningRef.current ? 1 : 0) - uniformsRef.current.uBurning.value) * 0.08;
+      const u = uniformsRef.current;
+      u.uTime.value = clock.getElapsedTime();
+      // Smooth interpolation for all uniforms
+      u.uIntensity.value += (targetRef.current - u.uIntensity.value) * 0.045;
+      u.uBurning.value += ((burningRef.current ? 1 : 0) - u.uBurning.value) * 0.07;
+      u.uDropPulse.value += (dropPulseRef.current - u.uDropPulse.value) * 0.12;
+      u.uAshAmount.value += (ashRef.current - u.uAshAmount.value) * 0.03;
       renderer.render(scene, camera);
       frame = window.requestAnimationFrame(render);
     };
-
     render();
 
     return () => {
@@ -77,13 +86,10 @@ function FlameCanvas({ intensity, burning }: FlameCanvasProps) {
     };
   }, []);
 
-  useEffect(() => {
-    targetRef.current = intensity;
-  }, [intensity]);
-
-  useEffect(() => {
-    burningRef.current = burning;
-  }, [burning]);
+  useEffect(() => { targetRef.current = intensity; }, [intensity]);
+  useEffect(() => { burningRef.current = burning; }, [burning]);
+  useEffect(() => { dropPulseRef.current = dropPulse; }, [dropPulse]);
+  useEffect(() => { ashRef.current = ashAmount; }, [ashAmount]);
 
   return <div ref={containerRef} className="pointer-events-none absolute inset-0 z-0" />;
 }
