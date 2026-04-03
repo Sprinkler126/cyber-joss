@@ -8,14 +8,16 @@ interface Particle {
   duration: number;
   opacity: number;
   drift: number;
+  hue: number;
 }
 
 interface AshParticlesProps {
   active: boolean;
   count?: number;
+  intensity?: number;
 }
 
-function AshParticles({ active, count = 28 }: AshParticlesProps) {
+function AshParticles({ active, count = 40, intensity = 0.35 }: AshParticlesProps) {
   const [particles, setParticles] = useState<Particle[]>([]);
 
   useEffect(() => {
@@ -28,21 +30,20 @@ function AshParticles({ active, count = 28 }: AshParticlesProps) {
       Array.from({ length: count }, (_, index) => ({
         id: index,
         left: Math.random() * 100,
-        size: 2 + Math.random() * 4,
+        size: 1 + Math.random() * (2 + intensity * 5),
         delay: Math.random() * 2,
-        duration: 5 + Math.random() * 5,
-        opacity: 0.12 + Math.random() * 0.3,
-        drift: -40 + Math.random() * 80,
+        duration: 4 + Math.random() * (5 - intensity * 1.5),
+        opacity: 0.08 + Math.random() * (0.22 + intensity * 0.28),
+        drift: -60 + Math.random() * 120,
+        hue: 20 + Math.random() * 28,
       })),
     );
-  }, [active, count]);
+  }, [active, count, intensity]);
 
-  if (!active) {
-    return null;
-  }
+  if (!active) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-30 overflow-hidden">
+    <div className="pointer-events-none fixed inset-0 z-20 overflow-hidden">
       {particles.map((particle) => (
         <span
           key={particle.id}
@@ -53,8 +54,8 @@ function AshParticles({ active, count = 28 }: AshParticlesProps) {
             width: `${particle.size}px`,
             height: `${particle.size}px`,
             opacity: particle.opacity,
-            background: 'radial-gradient(circle, rgba(255,190,120,0.9) 0%, rgba(161,98,7,0.4) 45%, rgba(120,53,15,0) 80%)',
-            boxShadow: '0 0 12px rgba(255,150,80,0.18)',
+            background: `radial-gradient(circle, hsla(${particle.hue}, 100%, 75%, 0.95) 0%, hsla(${particle.hue}, 90%, 45%, 0.45) 45%, rgba(120,53,15,0) 80%)`,
+            boxShadow: `0 0 ${10 + intensity * 16}px rgba(255,140,60,${0.1 + intensity * 0.22})`,
             animation: `ashFloat ${particle.duration}s ease-out ${particle.delay}s infinite`,
             transform: `translateX(${particle.drift}px)`,
           }}
@@ -62,9 +63,9 @@ function AshParticles({ active, count = 28 }: AshParticlesProps) {
       ))}
       <style>{`
         @keyframes ashFloat {
-          0% { transform: translate3d(0, 0, 0) scale(0.8); opacity: 0; }
-          10% { opacity: 1; }
-          100% { transform: translate3d(36px, -110vh, 0) scale(0.2); opacity: 0; }
+          0% { transform: translate3d(0, 0, 0) scale(0.9); opacity: 0; }
+          8% { opacity: 1; }
+          100% { transform: translate3d(42px, -110vh, 0) scale(0.15); opacity: 0; }
         }
       `}</style>
     </div>
