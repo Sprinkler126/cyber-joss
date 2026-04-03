@@ -18,12 +18,15 @@ import { mingliToFlameIntensity } from './lib/mingliCalculator';
  * then shatters into ash. Multiple consecutive burns make the fire grow.
  */
 
-// ─── Paper queue item ───
+// ─── Paper queue item — one card per FILE ───
 interface PaperItem {
   id: number;
-  files: File[];
+  file: File;            // single file per card
   fileName: string;
   phase: PaperPhase;
+  // stagger offset so cards fan out when dropped together
+  dropOffsetX: number;  // px offset from drop centre
+  dropOffsetY: number;
 }
 
 function getFireStage(mingli: number, isBurning: boolean): FireStage {
@@ -62,6 +65,7 @@ function App() {
   const [viewSize, setViewSize] = useState({ w: window.innerWidth, h: window.innerHeight });
   const [isDragging, setIsDragging] = useState(false);
   const [dragFileName, setDragFileName] = useState('纸品');
+  const [dragFileCount, setDragFileCount] = useState(1);
 
   const [showText, setShowText] = useState(false);
   const [burnChars, setBurnChars] = useState<string[]>([]);
@@ -161,8 +165,8 @@ function App() {
       setActivePaper(null);
     }
 
-    // Start the actual data burn ceremony
-    startBurn(paper.files);
+    // Start the actual data burn ceremony (single file)
+    startBurn([paper.file]);
   }, [activePaper, startBurn]);
 
   const handlePaperContact = useCallback(() => {
@@ -181,8 +185,9 @@ function App() {
       // Try to get file name from drag event
       const items = e.dataTransfer.items;
       if (items && items.length > 0) {
-        const firstName = items[0].type ? `${items.length}份纸品` : '纸品';
-        setDragFileName(items.length > 1 ? `${items.length}份纸品` : firstName);
+        const count = items.length;
+        setDragFileCount(count);
+        setDragFileName(count > 1 ? `${count}份纸品` : '纸品');
       }
     }
   }, []);
@@ -218,31 +223,36 @@ function App() {
     // Play ignite sound
     playPaperIgnite();
 
-    // Get display name
-    const displayName = dropped.length === 1
-      ? dropped[0].name
-      : `${dropped.length}份纸品`;
+    // Create ONE card per file, fanned out so they scatter visually
+    const newPapers: PaperItem[] = dropped.map((file, idx) => {
+      const total = dropped.length;
+      // Fan cards: spread ±80px horizontally, slight vertical stagger
+      const spreadX = total > 1 ? ((idx / (total - 1)) - 0.5) * 160 : 0;
+      const spreadY = total > 1 ? (idx % 2) * 18 - 9 : 0;
+      return {
+        id: ++paperIdCounter,
+        file,
+        fileName: file.name,
+        phase: 'falling' as PaperPhase,
+        dropOffsetX: spreadX,
+        dropOffsetY: spreadY,
+      };
+    });
 
-    // Create a paper item that will animate falling → burning → ash
-    const paper: PaperItem = {
-      id: ++paperIdCounter,
-      files: dropped,
-      fileName: displayName,
-      phase: 'falling',
-    };
-
-    setPapers((prev) => [...prev, paper]);
-    setActivePaper(paper);
+    setPapers((prev) => [...prev, ...newPapers]);
+    setActivePaper(newPapers[0]);
 
     // Also add files to mingli calculation immediately
     setFiles((cur) => [...cur, ...dropped]);
 
-    // After falling (~650ms), transition to burning
-    setTimeout(() => {
-      setPapers((prev) =>
-        prev.map((p) => (p.id === paper.id ? { ...p, phase: 'burning' } : p))
-      );
-    }, 700);
+    // After falling (~650ms + stagger), transition each card to burning
+    newPapers.forEach((paper, idx) => {
+      setTimeout(() => {
+        setPapers((prev) =>
+          prev.map((p) => (p.id === paper.id ? { ...p, phase: 'burning' } : p))
+        );
+      }, 700 + idx * 120); // slight stagger so they don't all ignite simultaneously
+    });
   }, [playPaperIgnite, setFiles]);
 
   // ─── File input (button) — same animation ───
@@ -256,26 +266,34 @@ function App() {
     e.target.value = '';
 
     playPaperIgnite();
-
-    const displayName = selected.length === 1 ? selected[0].name : `${selected.length}份纸品`;
-    const paper: PaperItem = {
-      id: ++paperIdCounter,
-      files: selected,
-      fileName: displayName,
-      // For button-added files, skip following, go straight to falling from center-top
-      phase: 'falling',
-    };
-
-    setPapers((prev) => [...prev, paper]);
-    setActivePaper(paper);
-    setFiles((cur) => [...cur, ...selected]);
     setMousePos({ x: viewSize.w / 2, y: viewSize.h * 0.3 });
 
-    setTimeout(() => {
-      setPapers((prev) =>
-        prev.map((p) => (p.id === paper.id ? { ...p, phase: 'burning' } : p))
-      );
-    }, 700);
+    // One card per file
+    const newPapers: PaperItem[] = selected.map((file, idx) => {
+      const total = selected.length;
+      const spreadX = total > 1 ? ((idx / (total - 1)) - 0.5) * 160 : 0;
+      const spreadY = total > 1 ? (idx % 2) * 18 - 9 : 0;
+      return {
+        id: ++paperIdCounter,
+        file,
+        fileName: file.name,
+        phase: 'falling' as PaperPhase,
+        dropOffsetX: spreadX,
+        dropOffsetY: spreadY,
+      };
+    });
+
+    setPapers((prev) => [...prev, ...newPapers]);
+    setActivePaper(newPapers[0]);
+    setFiles((cur) => [...cur, ...selected]);
+
+    newPapers.forEach((paper, idx) => {
+      setTimeout(() => {
+        setPapers((prev) =>
+          prev.map((p) => (p.id === paper.id ? { ...p, phase: 'burning' } : p))
+        );
+      }, 700 + idx * 120);
+    });
   }, [playPaperIgnite, setFiles, viewSize]);
 
   // ─── Auto-burn: if only text (no files dropped as paper), allow manual burn ───
@@ -316,26 +334,32 @@ function App() {
         cumulativeBurns={cumulativeBurns}
       />
 
-      {/* ─── Floating paper card during drag ─── */}
-      {isDragging && (
-        <PaperCard
-          mouseX={mousePos.x}
-          mouseY={mousePos.y}
-          viewW={viewSize.w}
-          viewH={viewSize.h}
-          fileName={dragFileName}
-          phase="following"
-          onBurnComplete={() => {}}
-          onContact={() => {}}
-        />
-      )}
+      {/* ─── Floating paper cards during drag (one ghost per file, fanned out) ─── */}
+      {isDragging && Array.from({ length: Math.min(dragFileCount, 5) }, (_, idx) => {
+        const total = Math.min(dragFileCount, 5);
+        const spreadX = total > 1 ? ((idx / (total - 1)) - 0.5) * 100 : 0;
+        const spreadY = total > 1 ? (idx % 2) * 12 - 6 : 0;
+        return (
+          <PaperCard
+            key={`drag-preview-${idx}`}
+            mouseX={mousePos.x + spreadX}
+            mouseY={mousePos.y + spreadY}
+            viewW={viewSize.w}
+            viewH={viewSize.h}
+            fileName={dragFileCount === 1 ? dragFileName : `纸品 ${idx + 1}`}
+            phase="following"
+            onBurnComplete={() => {}}
+            onContact={() => {}}
+          />
+        );
+      })}
 
-      {/* ─── Dropped paper cards (falling → burning → ash) ─── */}
+      {/* ─── Dropped paper cards (one per file, scattered) ─── */}
       {papers.map((paper) => (
         <PaperCard
           key={paper.id}
-          mouseX={mousePos.x}
-          mouseY={mousePos.y}
+          mouseX={mousePos.x + paper.dropOffsetX}
+          mouseY={mousePos.y + paper.dropOffsetY}
           viewW={viewSize.w}
           viewH={viewSize.h}
           fileName={paper.fileName}

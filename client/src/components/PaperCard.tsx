@@ -56,9 +56,10 @@ function PaperCard({
 
     const startX = mouseX;
     const startY = mouseY;
-    // Target: center-bottom of screen (fire basin center)
-    const targetX = viewW / 2;
-    const targetY = viewH * 0.78;
+    // Target: fire basin center with slight random scatter so cards form a pile
+    const scatter = (Math.random() - 0.5) * 60;
+    const targetX = viewW / 2 + scatter;
+    const targetY = viewH * 0.78 + (Math.random() - 0.5) * 20;
     const startTime = performance.now();
     const duration = 650; // ms for the arc
 
