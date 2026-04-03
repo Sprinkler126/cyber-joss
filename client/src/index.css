@@ -1,12 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   color-scheme: dark;
-  font-family: 'Noto Serif SC', serif;
+  font-family: 'STSong', 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', serif;
   background: #120c0a;
 }
 

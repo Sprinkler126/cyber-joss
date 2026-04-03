@@ -9,6 +9,7 @@ import BurnProgress from './components/BurnProgress';
 import AshParticles from './components/AshParticles';
 import { useBurnCeremony } from './hooks/useBurnCeremony';
 import { useMingli } from './hooks/useMingli';
+import { useSound } from './hooks/useSound';
 import { mingliToFlameIntensity } from './lib/mingliCalculator';
 
 function App() {
@@ -39,6 +40,10 @@ function App() {
 
   const intensity = useMemo(() => mingliToFlameIntensity(mingli), [mingli]);
   const flameIntensity = isDone ? 0.08 : isBurning ? Math.min(intensity * 1.35 + 0.08, 1) : Math.max(intensity, 0.05);
+  const { enabled: soundEnabled, label: soundLabel, toggle: toggleSound } = useSound({
+    phase: state.phase,
+    burningIntensity: flameIntensity,
+  });
 
   const handleAddFiles = useCallback((newFiles: File[]) => {
     setFiles((current) => [...current, ...newFiles]);
@@ -83,6 +88,15 @@ function App() {
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-stone-300/78 md:text-base">
             以中国风祭台承载思念，以火焰吞没文字与影像。你写下的祭文、上传的纸品，将在一场安静而庄重的数字焚化中消散于赛博空间。
           </p>
+          <div className="mt-4 flex justify-center">
+            <button
+              type="button"
+              onClick={toggleSound}
+              className="rounded-full border border-[#6a2f16]/60 bg-black/30 px-4 py-2 text-xs tracking-[0.25em] text-amber-100/80 transition hover:border-amber-500/40 hover:text-amber-50"
+            >
+              {soundLabel} · {soundEnabled ? 'ON' : 'OFF'}
+            </button>
+          </div>
         </header>
 
         <main className="grid flex-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -111,7 +125,8 @@ function App() {
                   <div className="rounded-2xl border border-[#6d3417]/50 bg-[#1c120f]/80 px-4 py-3 text-xs leading-6 text-stone-400">
                     <p>· 文字每 100 字约为 1 冥力</p>
                     <p>· 图片每张 5 冥力</p>
-                    <p>· 焚化完成后前端即刻清空内容</p>
+                    <p>· 本地音效：点火 / 燃烧 / 余烬 / 钟声</p>
+                    <p>· PDF worker 已改为本地资源</p>
                   </div>
                 </div>
               </div>
@@ -123,23 +138,45 @@ function App() {
                   <BurnProgress state={state} mingli={mingli} />
                   <div className="rounded-[24px] border border-[#6d3417]/40 bg-[#1a110e]/60 p-5">
                     <p className="mb-4 text-center text-xs tracking-[0.28em] text-stone-500">火中书影</p>
-                    <div className="min-h-[220px] overflow-hidden rounded-2xl border border-white/5 bg-black/20 p-4">
-                      <div className="flex flex-wrap justify-center gap-x-1 gap-y-2">
+                    <div className="min-h-[260px] overflow-hidden rounded-2xl border border-white/5 bg-black/20 p-4">
+                      <div className="flex flex-wrap justify-center gap-x-2 gap-y-3">
                         {burnChars.length > 0 ? burnChars.map((char, index) => {
-                          const threshold = burnChars.length === 0 ? 0 : index / burnChars.length;
-                          const consumed = state.progress >= Math.max(0, threshold - 0.05);
+                          const totalChars = Math.max(burnChars.length, 1);
+                          const threshold = index / totalChars;
+                          const revealWindowStart = Math.max(0, threshold - 0.16);
+                          const revealWindowEnd = Math.min(1, threshold + 0.06);
+                          const consumeStart = Math.min(1, threshold + 0.12);
+                          const revealProgress = Math.min(1, Math.max(0, (state.progress - revealWindowStart) / Math.max(0.001, revealWindowEnd - revealWindowStart)));
+                          const consumeProgress = Math.min(1, Math.max(0, (state.progress - consumeStart) / 0.18));
+                          const visible = state.progress >= revealWindowStart;
+                          const lift = (1 - revealProgress) * 28 - consumeProgress * 36;
+                          const scale = 0.84 + revealProgress * 0.22 - consumeProgress * 0.18;
+                          const opacity = visible ? Math.max(0, 0.12 + revealProgress * 0.95 - consumeProgress * 0.92) : 0;
+                          const glow = revealProgress * (1 - consumeProgress);
+                          const color = consumeProgress > 0.45 ? '#fb923c' : glow > 0.6 ? '#fff1d6' : '#f5e7cf';
+
                           return (
                             <span
                               key={`${char}-${index}`}
-                              className="text-lg transition-all duration-700 md:text-2xl"
+                              className="relative inline-flex min-w-[1.2rem] justify-center text-lg transition-all duration-200 md:text-2xl"
                               style={{
-                                opacity: consumed ? 0.06 : 0.95,
-                                transform: consumed ? 'translateY(-28px) scale(0.68) rotate(-6deg)' : 'translateY(0) scale(1)',
-                                color: consumed ? '#f97316' : '#f5e7cf',
-                                textShadow: consumed ? '0 0 10px rgba(249,115,22,0.9), 0 0 25px rgba(220,38,38,0.55)' : '0 0 8px rgba(255,255,255,0.05)',
-                                filter: consumed ? 'blur(2px)' : 'none',
+                                opacity,
+                                transform: `translateY(${lift}px) scale(${scale}) rotate(${consumeProgress * -8}deg)`,
+                                color,
+                                filter: consumeProgress > 0.55 ? `blur(${consumeProgress * 1.8}px)` : 'none',
+                                textShadow: glow > 0
+                                  ? `0 0 ${10 + glow * 18}px rgba(251,146,60,${0.35 + glow * 0.3}), 0 0 ${18 + glow * 24}px rgba(220,38,38,${0.18 + glow * 0.2})`
+                                  : '0 0 8px rgba(255,255,255,0.05)',
                               }}
                             >
+                              <span
+                                className="pointer-events-none absolute inset-x-0 bottom-[-10px] h-6 rounded-full"
+                                style={{
+                                  opacity: Math.max(0, glow - consumeProgress * 0.4),
+                                  background: 'radial-gradient(circle, rgba(251,146,60,0.35) 0%, rgba(220,38,38,0.12) 50%, rgba(0,0,0,0) 80%)',
+                                  transform: `scale(${0.7 + glow * 0.6})`,
+                                }}
+                              />
                               {char}
                             </span>
                           );

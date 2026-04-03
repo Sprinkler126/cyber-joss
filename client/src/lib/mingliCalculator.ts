@@ -32,7 +32,7 @@ async function extractDocxText(file: File): Promise<string> {
 
 async function extractPdfText(file: File): Promise<string> {
   const pdfjsLib = await import('pdfjs-dist');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs';
   const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
   let text = '';
 
