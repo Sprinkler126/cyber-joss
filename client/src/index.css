@@ -5,7 +5,7 @@
 :root {
   color-scheme: dark;
   font-family: 'STSong', 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', serif;
-  background: #120c0a;
+  background: #0a0705;
 }
 
 * {
@@ -21,10 +21,11 @@ body,
 body {
   margin: 0;
   min-width: 320px;
-  background: #120c0a;
+  background: #0a0705;
   color: #f5f5f4;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
 }
 
 button,
