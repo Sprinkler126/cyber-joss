@@ -106,54 +106,52 @@ void main(){
   bg = mix(bg, emberCol, ashY * ashLevel * 0.85);
 
   // ── 3. Wide environmental glow at the base (subtle orange on ground) ─────
-  // Campfire casts a pool of warm light downward
-  float envGlowDist = length(vec2((uv.x - 0.5) * ar * 0.7, uv.y * 0.4));
-  float envGlow = exp(-envGlowDist * envGlowDist * 3.5) * (0.06 + power * 0.12);
+  // Campfire casts a pool of warm light downward - smaller, moves with fire
+  float envGlowDist = length(vec2((uv.x - 0.5) * ar * 0.8, (uv.y - power * 0.02) * 0.5));
+  float envGlow = exp(-envGlowDist * envGlowDist * 5.0) * (0.04 + power * 0.08);
   bg += vec3(0.8, 0.25, 0.04) * envGlow;
 
   // ── 4. Fire basin / source: tight ellipse at bottom center ───────────────
   // The fire SOURCE is small like a real campfire base
-  float sourceR = 0.10 + power * 0.06; // narrow base radius
+  float sourceR = 0.06 + power * 0.04; // smaller base radius
   float sourceCx = (uv.x - 0.5) * ar;
-  float sourceCy = uv.y - 0.045; // just above the very bottom
+  // Light source moves up slightly with fire intensity
+  float sourceCy = uv.y - 0.035 - power * 0.015; 
   float sourceDist = length(vec2(sourceCx / sourceR, sourceCy / (sourceR * 0.45)));
-  float sourceGlow = exp(-sourceDist * sourceDist * 1.2) * (0.5 + power * 1.2);
+  float sourceGlow = exp(-sourceDist * sourceDist * 2.0) * (0.4 + power * 0.9);
   bg += vec3(1.0, 0.6, 0.1) * sourceGlow;
 
   // ── 5. Flame computation ──────────────────────────────────────────────────
   // Map UVs so the flame is centered horizontally, base at bottom
   vec2 fuv = uv;
 
-  // Wind / turbulence distortion — stronger at top, zero at base
-  float warp = 1. - uv.y;  // 1 at bottom, 0 at top
-  float d1 = snoise(vec3(uv * vec2(3.0, 5.0), t * 0.9)) * 0.10;
-  float d2 = snoise(vec3(uv * vec2(7.0, 9.0), t * 1.8)) * 0.04;
-  float d3 = snoise(vec3(uv * vec2(1.5, 2.5), t * 0.4)) * 0.06; // large lazy sway
-  fuv.x += (d1 + d2 + d3) * (0.35 + power * 0.30) * (1. - uv.y * 0.7);
+  // Wind / turbulence distortion — sharper, less blur
+  float warp = 1. - uv.y;
+  float d1 = snoise(vec3(uv * vec2(4.0, 6.0), t * 1.2)) * 0.06;
+  float d2 = snoise(vec3(uv * vec2(9.0, 12.0), t * 2.2)) * 0.025;
+  float d3 = snoise(vec3(uv * vec2(2.0, 3.0), t * 0.5)) * 0.04;
+  fuv.x += (d1 + d2 + d3) * (0.25 + power * 0.20) * (1. - uv.y * 0.6);
 
   // Flame height: campfire flames are tall and narrow
   float flameH = 0.18 + power * 0.40;  // 18%..58% of screen height
   float fv = fuv.y / flameH;           // 0=base 1=tip, >1=above flame
 
-  // Flame width profile — narrow at base like a real fire, even narrower at tip
+  // Flame width profile — sharper edges, less blur
   float cx = abs(fuv.x - 0.5) * 2.0;
-  // Campfire: wider at ~20% height, then tapers sharply to tip
-  float wProfile = mix(0.20, 0.04, pow(clamp(fv, 0., 1.), 0.65));
-  float flameMask = 1. - smoothstep(wProfile - 0.08, wProfile + 0.12, cx);
-  flameMask *= smoothstep(-0.02, 0.08, fv);   // fade at base
-  flameMask *= 1. - smoothstep(0.75, 1.15, fv); // fade at tip
+  float wProfile = mix(0.18, 0.035, pow(clamp(fv, 0., 1.), 0.55));
+  float flameMask = 1. - smoothstep(wProfile - 0.04, wProfile + 0.06, cx);
+  flameMask *= smoothstep(-0.01, 0.05, fv);
+  flameMask *= 1. - smoothstep(0.80, 1.05, fv);
 
-  // High-frequency noise for turbulent flame tongues
-  vec3 nCoord = vec3(fuv.x * 4.5, fv * 6.0 - t * 2.4, t * 0.7);
-  float n1 = fbm(nCoord, 5);
-  float n2 = fbm(nCoord * 1.8 + vec3(5.3, -t * 1.2, t * 0.5), 4);
-  // Secondary wispy tendrils that shoot upward
-  float n3 = snoise(vec3(fuv.x * 6., fv * 9. - t * 3.0, t * 1.1));
+  // High-frequency noise for turbulent flame tongues - sharper details
+  vec3 nCoord = vec3(fuv.x * 6.0, fv * 8.0 - t * 3.0, t * 0.9);
+  float n1 = fbm(nCoord, 4);
+  float n2 = fbm(nCoord * 2.0 + vec3(7.0, -t * 1.5, t * 0.6), 3);
+  float n3 = snoise(vec3(fuv.x * 10., fv * 12. - t * 4.0, t * 1.5));
 
-  float flame = flameMask * smoothstep(-0.15, 0.55, n1 + n2 * 0.35 + n3 * 0.15);
-  // Extra sharp detail for dancing flame edges
-  flame *= smoothstep(-0.1, 0.45, snoise(vec3(fuv * vec2(4., 8.) + vec2(0., -t * 2.5), t * 1.2)));
-  flame = pow(max(flame, 0.0005), mix(1.1, 0.7, clamp(power * 0.7, 0., 1.)));
+  float flame = flameMask * smoothstep(-0.1, 0.45, n1 + n2 * 0.3 + n3 * 0.1);
+  flame *= smoothstep(-0.05, 0.35, snoise(vec3(fuv * vec2(6., 10.) + vec2(0., -t * 3.0), t * 1.5)));
+  flame = pow(max(flame, 0.001), mix(0.9, 0.6, clamp(power * 0.7, 0., 1.)));
 
   // ── 6. Inner core — the blazing white-hot heart ──────────────────────────
   // Real campfire has a white/light-yellow core near the base
@@ -176,11 +174,11 @@ void main(){
     sX += (hash(sid + 3.0) - 0.5) * 0.04 * sLife;
     vec2 sPos = vec2(sX, sY);
     float sDist = length((uv - sPos) * vec2(ar * 1.5, 1.0));
-    float sSize = 0.004 + hash(sid + 4.0) * 0.006;
+    float sSize = 0.002 + hash(sid + 4.0) * 0.003; // smaller, sharper sparks
     float sGlow = exp(-sDist * sDist / (sSize * sSize));
-    float sFade = (1.0 - sLife) * sLife * 4.0; // fade in/out
-    float sBright = 0.4 + power * 0.6;
-    sparks += sGlow * sFade * sBright * (0.5 + hash(sid + 5.0) * 0.5);
+    float sFade = (1.0 - sLife) * sLife * 4.0;
+    float sBright = 0.6 + power * 0.8;
+    sparks += sGlow * sFade * sBright * (0.7 + hash(sid + 5.0) * 0.3);
   }
   sparks = clamp(sparks, 0., 1.);
 
@@ -229,17 +227,16 @@ void main(){
   // First add a bloom pass on the bright flame
   float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
   vec3 bloom = col * max(0., lum - 0.55) * (1.8 + power * 1.2);
-  col += bloom;
+  col += bloom * 0.6; // reduced bloom for less blur
 
-  // Reinhard extended tone-mapping
-  col = (col * (1.0 + col / (1.6 * 1.6))) / (1.0 + col);
-  // Gamma 2.2
-  col = pow(max(col, vec3(0.)), vec3(1.0 / 2.2));
+  // Simpler tone-mapping for sharper image
+  col = col / (col + 0.8);
+  col = pow(max(col, vec3(0.)), vec3(0.9)); // slightly higher gamma for more contrast
 
-  // Vignette — darken screen edges for campfire-in-the-dark feel
+  // Vignette — stronger dark edges for more dramatic feel
   float vigDist = length((uv - 0.5) * vec2(ar, 1.0));
-  float vignette = 1.0 - smoothstep(0.55, 1.35, vigDist * 0.9);
-  col *= mix(0.15, 1.0, vignette);
+  float vignette = 1.0 - smoothstep(0.45, 1.25, vigDist * 0.95);
+  col *= mix(0.05, 1.0, vignette);
 
   gl_FragColor = vec4(col, 1.);
 }

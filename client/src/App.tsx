@@ -73,6 +73,10 @@ function App() {
   const [ashAmount, setAshAmount] = useState(0);
   const [cumulativeBurns, setCumulativeBurns] = useState(0);
   const [dragSense, setDragSense] = useState(0);
+  
+  // 飘浮文本状态 - 随包发送的字符
+  const [floatingTexts, setFloatingTexts] = useState<Array<{id: number; char: string; x: number; y: number; opacity: number; scale: number}>>([]);
+  const floatingIdRef = useRef(0);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const autoBurnRef = useRef<ReturnType<typeof setTimeout>>();
@@ -125,6 +129,63 @@ function App() {
       setAshAmount((v) => Math.min(1, v + 0.004));
     }
   }, [state.progress, isBurning]);
+
+  // ─── Floating text effect: firefly-like glowing text rising slowly ───
+  useEffect(() => {
+    if (state.currentText && isBurning) {
+      // Split the text into individual chars and create floating text for each
+      const chars = state.currentText.split('');
+      chars.forEach((char, idx) => {
+        setTimeout(() => {
+          const id = ++floatingIdRef.current;
+          const x = 45 + (Math.random() - 0.5) * 30; // 更宽的范围 ±15%
+          const y = 75 + Math.random() * 10; // 从火焰底部开始，略有随机
+          
+          setFloatingTexts(prev => [...prev, { 
+            id, 
+            char, 
+            x, 
+            y, 
+            opacity: 0.8 + Math.random() * 0.2, 
+            scale: 0.8 + Math.random() * 0.4 
+          }]);
+          
+          // Firefly-like animation: slow rise with twinkling
+          const duration = 4000 + Math.random() * 2000; // 4-6秒，更慢
+          const startTime = Date.now();
+          const twinkleSpeed = 3 + Math.random() * 4; // 闪烁速度
+          
+          const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const progress = elapsed / duration;
+            
+            if (progress >= 1) {
+              setFloatingTexts(prev => prev.filter(t => t.id !== id));
+              return;
+            }
+            
+            // Firefly twinkling effect
+            const twinkle = Math.sin(elapsed * 0.01 * twinkleSpeed) * 0.3 + 0.7;
+            const fadeOut = Math.max(0, 1 - Math.pow(progress, 2) * 0.8); // 更慢的淡出
+            
+            setFloatingTexts(prev => prev.map(t => {
+              if (t.id !== id) return t;
+              return {
+                ...t,
+                y: y - progress * 50, // 向上飘 50%，更慢
+                opacity: fadeOut * twinkle, // 闪烁 + 渐隐
+                scale: (0.8 + progress * 0.3) * (0.9 + twinkle * 0.2), // 轻微缩放波动
+              };
+            }));
+            
+            requestAnimationFrame(animate);
+          };
+          
+          requestAnimationFrame(animate);
+        }, idx * 150); // 每个字间隔150ms出现
+      });
+    }
+  }, [state.currentText, isBurning]);
 
   // Reset
   const handleReset = useCallback(() => {
@@ -426,6 +487,35 @@ function App() {
           {(state.phase === 'igniting' || state.phase === 'burning' || state.phase === 'fading') && (
             <div className="absolute left-1/2 top-[28%] z-20 w-full max-w-lg -translate-x-1/2 px-4 md:top-[22%]">
               <BurnProgress state={state} mingli={mingli} />
+            </div>
+          )}
+
+          {/* ─── Floating text from file content — firefly style ─── */}
+          {floatingTexts.length > 0 && (
+            <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
+              {floatingTexts.map((t) => (
+                <span
+                  key={t.id}
+                  className="absolute text-xl font-light md:text-3xl"
+                  style={{
+                    left: `${t.x}%`,
+                    top: `${t.y}%`,
+                    opacity: t.opacity,
+                    transform: `translate(-50%, -50%) scale(${t.scale})`,
+                    color: `rgba(255, ${180 + t.opacity * 40}, ${80 + t.opacity * 60}, ${t.opacity})`,
+                    textShadow: `
+                      0 0 ${8 + t.opacity * 12}px rgba(255,200,100,${0.6 + t.opacity * 0.4}), 
+                      0 0 ${20 + t.opacity * 20}px rgba(255,140,50,${0.4 + t.opacity * 0.3}),
+                      0 0 ${40 + t.opacity * 30}px rgba(255,100,30,${0.2 + t.opacity * 0.2})
+                    `,
+                    fontFamily: "'Noto Serif SC', 'STSong', serif",
+                    filter: `blur(${0.5 - t.opacity * 0.3}px)`,
+                    transition: 'none',
+                  }}
+                >
+                  {t.char}
+                </span>
+              ))}
             </div>
           )}
 

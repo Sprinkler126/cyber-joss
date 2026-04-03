@@ -7,6 +7,7 @@ export interface BurnState {
   progress: number;
   packetsSent: number;
   totalPackets: number;
+  currentText?: string; // 当前正在发送的包对应的文本
 }
 
 function sleep(ms: number) {
@@ -43,6 +44,7 @@ export function useBurnCeremony() {
 
   // Live queue: chunks can be appended mid-burn
   const queueRef = useRef<ArrayBuffer[]>([]);
+  const textQueueRef = useRef<string[]>([]); // 对应的文本片段
   const burningRef = useRef(false);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -65,24 +67,67 @@ export function useBurnCeremony() {
   const feedFiles = useCallback(async (textInput: string, files: File[], totalMingli: number) => {
     // Chunk the input
     const newChunks: ArrayBuffer[] = [];
+    const newTextChunks: string[] = []; // 对应的文本片段
+    
     if (textInput.trim()) {
-      for (let i = 0; i < textInput.length; i += 200) {
-        newChunks.push(new TextEncoder().encode(textInput.slice(i, i + 200)).buffer);
+      for (let i = 0; i < textInput.length; i += 120) {
+        newChunks.push(new TextEncoder().encode(textInput.slice(i, i + 120)).buffer);
+        // 随机抽取 2-4 个字符作为飘浮文本
+        const chunkText = textInput.slice(i, i + 120);
+        const chars = chunkText.split('').filter(c => c.trim());
+        if (chars.length > 0) {
+          const numChars = 2 + Math.floor(Math.random() * 3); // 2-4 个字符
+          let selectedChars = '';
+          for (let j = 0; j < numChars && j < chars.length; j++) {
+            const randomIdx = Math.floor(Math.random() * chars.length);
+            selectedChars += chars[randomIdx];
+          }
+          newTextChunks.push(selectedChars);
+        } else {
+          newTextChunks.push('思念');
+        }
       }
     }
+    
     for (const file of files) {
       const buf = await file.arrayBuffer();
-      for (let i = 0; i < buf.byteLength; i += 4096) {
-        newChunks.push(buf.slice(i, i + 4096));
+      const text = new TextDecoder().decode(buf);
+      for (let i = 0; i < buf.byteLength; i += 2048) {
+        newChunks.push(buf.slice(i, i + 2048));
+        // 从每个块中随机抽取 2-4 个字符
+        const chunkText = text.slice(i, i + 2048);
+        const chars = chunkText.split('').filter(c => c.trim() && c.charCodeAt(0) > 127);
+        let selectedChars = '';
+        const numChars = 2 + Math.floor(Math.random() * 3);
+        
+        if (chars.length > 0) {
+          for (let j = 0; j < numChars && j < chars.length; j++) {
+            const randomIdx = Math.floor(Math.random() * chars.length);
+            selectedChars += chars[randomIdx];
+          }
+        } else {
+          const anyChars = chunkText.split('').filter(c => c.trim());
+          if (anyChars.length > 0) {
+            for (let j = 0; j < numChars && j < anyChars.length; j++) {
+              const randomIdx = Math.floor(Math.random() * anyChars.length);
+              selectedChars += anyChars[randomIdx];
+            }
+          } else {
+            selectedChars = '思念';
+          }
+        }
+        newTextChunks.push(selectedChars);
       }
     }
+    
     if (newChunks.length === 0) {
-      // Still acknowledge the drop with at least 1 virtual packet
       newChunks.push(new ArrayBuffer(0));
+      newTextChunks.push('·');
     }
 
     // Push into queue
     queueRef.current.push(...newChunks);
+    textQueueRef.current.push(...newTextChunks);
 
     // Update totalPackets to reflect new queue length
     setState((s) => ({
@@ -125,6 +170,7 @@ export function useBurnCeremony() {
     let sent = 0;
     while (queueRef.current.length > 0) {
       const chunk = queueRef.current.shift()!;
+      const textChunk = textQueueRef.current.shift() || '·';
 
       if (ws?.readyState === WebSocket.OPEN) {
         ws.send(chunk);
@@ -138,9 +184,21 @@ export function useBurnCeremony() {
         packetsSent: sent,
         totalPackets: total,
         progress: total > 0 ? sent / total : 1,
+        currentText: textChunk,
       }));
 
-      await sleep(Math.max(20, 110 - totalMingli * 1.2));
+      // Adaptive delay: slower for more ceremony feel
+      const remainingPackets = queueRef.current.length;
+      const totalPackets = sent + remainingPackets;
+      let delayMs: number;
+      if (totalPackets < 10) {
+        delayMs = 400; // Small file: very slow, more ceremony
+      } else if (totalPackets < 30) {
+        delayMs = 180; // Medium file: slow
+      } else {
+        delayMs = 60; // Large file: moderate speed
+      }
+      await sleep(delayMs);
     }
 
     // Fading
@@ -158,8 +216,9 @@ export function useBurnCeremony() {
 
   const reset = useCallback(() => {
     queueRef.current = [];
+    textQueueRef.current = [];
     burningRef.current = false;
-    setState({ phase: 'idle', progress: 0, packetsSent: 0, totalPackets: 0 });
+    setState({ phase: 'idle', progress: 0, packetsSent: 0, totalPackets: 0, currentText: undefined });
     setNetworkStatus('香火尚未点燃，虚空彼岸一片寂静。');
     wsRef.current?.close();
     wsRef.current = null;
