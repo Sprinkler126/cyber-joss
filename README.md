@@ -175,7 +175,10 @@ npm --prefix client run dev -- --host 0.0.0.0
 
 ## 📜 License
 
-MIT © 2024 sprinkler
+[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) © 2024 sprinkler
+
+**禁止商用** — 本项目采用知识共享署名-非商业性使用 4.0 国际许可协议。
+您可以自由分享和修改，但不得用于商业目的。
 
 ---
 
