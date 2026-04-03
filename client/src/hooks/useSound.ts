@@ -41,10 +41,11 @@ export function useSound({ phase, burningIntensity }: UseSoundOptions) {
 
     if (phase === 'burning') {
       if (!sounds.burning.playing()) {
+        sounds.burning.volume(0.22 + Math.min(0.28, burningIntensity * 0.3));
         sounds.burning.play();
       }
-      sounds.burning.volume(0.18 + Math.min(0.22, burningIntensity * 0.24));
-      sounds.burning.rate(0.92 + Math.min(0.16, burningIntensity * 0.12));
+      sounds.burning.volume(0.22 + Math.min(0.28, burningIntensity * 0.3));
+      sounds.burning.rate(0.95 + Math.min(0.2, burningIntensity * 0.14));
     } else if (sounds.burning.playing()) {
       sounds.burning.fade(sounds.burning.volume(), 0, 500);
       window.setTimeout(() => {
