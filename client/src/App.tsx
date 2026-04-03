@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import FlameCanvas from './components/FlameCanvas';
+import PaperCard from './components/PaperCard';
+import type { PaperPhase } from './components/PaperCard';
 import BurnProgress from './components/BurnProgress';
 import CompletionScreen from './components/CompletionScreen';
 import { useBurnCeremony } from './hooks/useBurnCeremony';
@@ -8,12 +10,21 @@ import { useSound, FireStage } from './hooks/useSound';
 import { mingliToFlameIntensity } from './lib/mingliCalculator';
 
 /**
- * Solemn Chinese paper-burning ritual.
+ * Immersive Chinese paper-burning ritual.
  *
- * The entire page is a persistent bonfire. Drag files anywhere — even
- * while burning — and they are absorbed seamlessly. No visible drop zone.
- * All visual effects are shader-based fire/flame, not particles.
+ * The entire page is a persistent bonfire. No visible drop zone — the scene
+ * itself gives all feedback. Dragging a file over shows a floating paper card
+ * that follows the mouse, warps near the fire, falls on drop, burns visually,
+ * then shatters into ash. Multiple consecutive burns make the fire grow.
  */
+
+// ─── Paper queue item ───
+interface PaperItem {
+  id: number;
+  files: File[];
+  fileName: string;
+  phase: PaperPhase;
+}
 
 function getFireStage(mingli: number, isBurning: boolean): FireStage {
   if (isBurning) {
@@ -26,6 +37,15 @@ function getFireStage(mingli: number, isBurning: boolean): FireStage {
   return 'idle';
 }
 
+// Calculate how close a Y position is to the fire basin (bottom 35% of screen)
+function getDragSense(mouseY: number, viewH: number): number {
+  if (viewH <= 0) return 0;
+  const ratio = mouseY / viewH;
+  return Math.max(0, Math.min(1, (ratio - 0.45) / 0.40));
+}
+
+let paperIdCounter = 0;
+
 function App() {
   const {
     textInput, setTextInput,
@@ -35,14 +55,24 @@ function App() {
 
   const { state, feedFiles, reset, totalBurns, networkStatus } = useBurnCeremony();
 
-  const [dragOver, setDragOver] = useState(false);
+  // Paper card state
+  const [papers, setPapers] = useState<PaperItem[]>([]);
+  const [activePaper, setActivePaper] = useState<PaperItem | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [viewSize, setViewSize] = useState({ w: window.innerWidth, h: window.innerHeight });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragFileName, setDragFileName] = useState('纸品');
+
   const [showText, setShowText] = useState(false);
   const [burnChars, setBurnChars] = useState<string[]>([]);
   const [dropPulse, setDropPulse] = useState(0);
   const [ashAmount, setAshAmount] = useState(0);
+  const [cumulativeBurns, setCumulativeBurns] = useState(0);
+  const [dragSense, setDragSense] = useState(0);
+
   const inputRef = useRef<HTMLInputElement>(null);
-  const dropDecayRef = useRef<ReturnType<typeof setTimeout>>();
   const autoBurnRef = useRef<ReturnType<typeof setTimeout>>();
+  const dragCounterRef = useRef(0); // track nested drag events
 
   const isIdle = state.phase === 'idle';
   const isBurning = ['igniting', 'burning', 'fading'].includes(state.phase);
@@ -58,14 +88,21 @@ function App() {
 
   const fireStage = getFireStage(mingli, isBurning);
 
-  const { label: soundLabel, toggle: toggleSound, playPaperIgnite } = useSound({
+  const { label: soundLabel, toggle: toggleSound, playPaperIgnite, playContactBurst } = useSound({
     phase: state.phase,
     burningIntensity: flameIntensity,
     fireStage,
+    dragSense,
   });
 
+  // ─── Window resize ───
+  useEffect(() => {
+    const onResize = () => setViewSize({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   // ─── Drop pulse decay ───
-  // When a file is dropped, pulse goes to 1 then decays smoothly
   useEffect(() => {
     if (dropPulse <= 0) return;
     const iv = setInterval(() => {
@@ -85,7 +122,7 @@ function App() {
     }
   }, [state.progress, isBurning]);
 
-  // Reset ash when user restarts
+  // Reset
   const handleReset = useCallback(() => {
     reset();
     setTextInput('');
@@ -93,60 +130,155 @@ function App() {
     setBurnChars([]);
     setShowText(false);
     setAshAmount(0);
+    setCumulativeBurns(0);
+    setPapers([]);
+    setActivePaper(null);
   }, [reset, setFiles, setTextInput]);
 
-  // ─── File acceptance — ALWAYS works, even during burning ───
-  const acceptFiles = useCallback((newFiles: File[]) => {
-    if (newFiles.length === 0) return;
+  // ─── Start the actual burn ceremony ───
+  const startBurn = useCallback((newFiles: File[]) => {
+    if (newFiles.length === 0 && !textInput.trim()) return;
 
-    setFiles((cur) => [...cur, ...newFiles]);
-    playPaperIgnite();
+    // Merge with any existing queued files
+    const allFiles = [...files, ...newFiles];
+    setFiles(allFiles);
 
-    // Flash the fire
-    setDropPulse(1);
+    const chars = textInput.split('').filter((c) => c.trim());
+    setBurnChars(chars);
 
-    // If already burning, feed directly into the live queue
-    if (isBurning) {
-      void feedFiles('', newFiles, mingli);
+    void feedFiles(textInput, allFiles, mingli);
+  }, [feedFiles, files, mingli, textInput, setFiles]);
+
+  // ─── Paper card state machine ───
+  // When a paper finishes burning, increment cumulative and start actual ceremony
+  const handlePaperBurnComplete = useCallback((paper: PaperItem) => {
+    setCumulativeBurns((c) => c + 1);
+    setAshAmount((v) => Math.min(1, v + 0.08));
+
+    // Remove from active
+    setPapers((prev) => prev.filter((p) => p.id !== paper.id));
+    if (activePaper?.id === paper.id) {
+      setActivePaper(null);
     }
-  }, [setFiles, playPaperIgnite, isBurning, feedFiles, mingli]);
 
-  // ─── Seamless drag-drop on ENTIRE page — never blocked ───
+    // Start the actual data burn ceremony
+    startBurn(paper.files);
+  }, [activePaper, startBurn]);
+
+  const handlePaperContact = useCallback(() => {
+    // Fire spike: flash + sound
+    setDropPulse(1);
+    playContactBurst();
+  }, [playContactBurst]);
+
+  // ─── Drag events — NO visible drop zone, scene gives feedback ───
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (dragCounterRef.current === 1) {
+      setIsDragging(true);
+      // Try to get file name from drag event
+      const items = e.dataTransfer.items;
+      if (items && items.length > 0) {
+        const firstName = items[0].type ? `${items.length}份纸品` : '纸品';
+        setDragFileName(items.length > 1 ? `${items.length}份纸品` : firstName);
+      }
+    }
+  }, []);
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragOver(true);
-  }, []);
+    setMousePos({ x: e.clientX, y: e.clientY });
+    setDragSense(getDragSense(e.clientY, viewSize.h));
+  }, [viewSize.h]);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.relatedTarget === null || !(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
-      setDragOver(false);
+    dragCounterRef.current--;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+      setDragSense(0);
     }
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragOver(false);
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+    setDragSense(0);
+
     const dropped = Array.from(e.dataTransfer.files);
-    acceptFiles(dropped);
-  }, [acceptFiles]);
+    if (dropped.length === 0) return;
 
-  // ─── Auto-burn: start ceremony 1.5s after files arrive (if idle) ───
-  useEffect(() => {
-    if (files.length > 0 && isIdle && !isCalculating && !isDone) {
-      clearTimeout(autoBurnRef.current);
-      autoBurnRef.current = setTimeout(() => {
-        const chars = textInput.split('').filter((c) => c.trim());
-        setBurnChars(chars);
-        void feedFiles(textInput, files, mingli);
-      }, 1500);
-    }
-    return () => clearTimeout(autoBurnRef.current);
-  }, [files.length, isIdle, isCalculating, isDone]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Play ignite sound
+    playPaperIgnite();
 
+    // Get display name
+    const displayName = dropped.length === 1
+      ? dropped[0].name
+      : `${dropped.length}份纸品`;
+
+    // Create a paper item that will animate falling → burning → ash
+    const paper: PaperItem = {
+      id: ++paperIdCounter,
+      files: dropped,
+      fileName: displayName,
+      phase: 'falling',
+    };
+
+    setPapers((prev) => [...prev, paper]);
+    setActivePaper(paper);
+
+    // Also add files to mingli calculation immediately
+    setFiles((cur) => [...cur, ...dropped]);
+
+    // After falling (~650ms), transition to burning
+    setTimeout(() => {
+      setPapers((prev) =>
+        prev.map((p) => (p.id === paper.id ? { ...p, phase: 'burning' } : p))
+      );
+    }, 700);
+  }, [playPaperIgnite, setFiles]);
+
+  // ─── File input (button) — same animation ───
+  const handleClickAdd = useCallback(() => {
+    inputRef.current?.click();
+  }, []);
+
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files || []);
+    if (selected.length === 0) return;
+    e.target.value = '';
+
+    playPaperIgnite();
+
+    const displayName = selected.length === 1 ? selected[0].name : `${selected.length}份纸品`;
+    const paper: PaperItem = {
+      id: ++paperIdCounter,
+      files: selected,
+      fileName: displayName,
+      // For button-added files, skip following, go straight to falling from center-top
+      phase: 'falling',
+    };
+
+    setPapers((prev) => [...prev, paper]);
+    setActivePaper(paper);
+    setFiles((cur) => [...cur, ...selected]);
+    setMousePos({ x: viewSize.w / 2, y: viewSize.h * 0.3 });
+
+    setTimeout(() => {
+      setPapers((prev) =>
+        prev.map((p) => (p.id === paper.id ? { ...p, phase: 'burning' } : p))
+      );
+    }, 700);
+  }, [playPaperIgnite, setFiles, viewSize]);
+
+  // ─── Auto-burn: if only text (no files dropped as paper), allow manual burn ───
   const handleManualBurn = useCallback(() => {
     if (!textInput.trim() && files.length === 0) return;
     clearTimeout(autoBurnRef.current);
@@ -155,22 +287,14 @@ function App() {
     void feedFiles(textInput, files, mingli);
   }, [feedFiles, files, mingli, textInput]);
 
-  const handleClickAdd = useCallback(() => {
-    inputRef.current?.click();
-  }, []);
-
-  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.target.files || []);
-    acceptFiles(selected);
-    e.target.value = '';
-  }, [acceptFiles]);
-
   return (
     <div
       className="relative min-h-screen overflow-hidden bg-[#0a0705] text-stone-100 select-none"
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      style={{ cursor: isDragging ? 'none' : 'default' }}
     >
       {/* Hidden file input */}
       <input
@@ -189,24 +313,44 @@ function App() {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[35vh] bg-[linear-gradient(180deg,transparent_0%,rgba(30,18,12,0.5)_40%,rgba(8,5,4,0.95)_100%)]" />
       <div className="pointer-events-none absolute bottom-[6%] left-1/2 h-[90px] w-[40%] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse,rgba(200,80,20,0.15)_0%,rgba(120,40,10,0.08)_40%,transparent_72%)] blur-sm" />
 
-      {/* Drag-over atmospheric glow */}
-      <div
-        className="pointer-events-none absolute inset-0 z-30 transition-all duration-700"
-        style={{
-          background: dragOver
-            ? 'radial-gradient(ellipse 60% 50% at 50% 70%, rgba(255,140,40,0.14), transparent 60%)'
-            : 'transparent',
-          opacity: dragOver ? 1 : 0,
-        }}
-      />
-
-      {/* ─── FIRE (all shader, no particles) ─── */}
+      {/* ─── FIRE (all shader) ─── */}
       <FlameCanvas
         intensity={flameIntensity}
         burning={state.phase === 'burning'}
         dropPulse={dropPulse}
         ashAmount={ashAmount}
+        dragSense={dragSense}
+        cumulativeBurns={cumulativeBurns}
       />
+
+      {/* ─── Floating paper card during drag ─── */}
+      {isDragging && (
+        <PaperCard
+          mouseX={mousePos.x}
+          mouseY={mousePos.y}
+          viewW={viewSize.w}
+          viewH={viewSize.h}
+          fileName={dragFileName}
+          phase="following"
+          onBurnComplete={() => {}}
+          onContact={() => {}}
+        />
+      )}
+
+      {/* ─── Dropped paper cards (falling → burning → ash) ─── */}
+      {papers.map((paper) => (
+        <PaperCard
+          key={paper.id}
+          mouseX={mousePos.x}
+          mouseY={mousePos.y}
+          viewW={viewSize.w}
+          viewH={viewSize.h}
+          fileName={paper.fileName}
+          phase={paper.phase}
+          onBurnComplete={() => handlePaperBurnComplete(paper)}
+          onContact={handlePaperContact}
+        />
+      ))}
 
       {/* ─── UI Overlay ─── */}
       <div className="relative z-10 flex min-h-screen flex-col">
@@ -239,11 +383,13 @@ function App() {
               灰烬之上
             </h1>
             <p className="mx-auto mt-5 max-w-xl text-xs leading-7 tracking-[0.22em] text-stone-500 md:text-sm">
-              {isBurning
-                ? '纸品正在化入火焰……继续拖入，火会更旺。'
-                : isDone
-                  ? '余烬归于沉静。'
-                  : '火堆长燃不灭。将文件拖入，它便化为灰烬。'}
+              {isDragging
+                ? '将纸品移向火堆……靠近时火焰会感应。'
+                : isBurning
+                  ? '纸品正在化入火焰……继续拖入，火会更旺。'
+                  : isDone
+                    ? '余烬归于沉静。'
+                    : '火堆长燃不灭。将文件拖入，它便化为灰烬。'}
             </p>
           </div>
 
@@ -314,21 +460,12 @@ function App() {
           )}
 
           {/* ─── Bottom controls ─── */}
-          {(isIdle || isDone) ? null : null}
           {!isDone && (
             <div className="mt-auto w-full max-w-4xl">
-              {/* Queued file pills — subtle, always visible */}
-              {files.length > 0 && isIdle && (
-                <div className="mx-auto mb-4 flex flex-wrap items-center justify-center gap-2">
-                  {files.map((f, i) => (
-                    <div
-                      key={`${f.name}-${i}`}
-                      className="animate-pulse rounded-full border border-orange-500/20 bg-orange-900/15 px-3 py-1 text-[11px] text-orange-200/60"
-                    >
-                      {f.name.length > 20 ? f.name.slice(0, 18) + '…' : f.name}
-                    </div>
-                  ))}
-                  <span className="text-[11px] tracking-[0.2em] text-stone-500">即将化入火中…</span>
+              {/* Cumulative burn indicator */}
+              {cumulativeBurns > 0 && !isBurning && (
+                <div className="mx-auto mb-3 text-center text-[10px] tracking-[0.25em] text-orange-400/40">
+                  已焚 {cumulativeBurns} 件 · 余烬堆积
                 </div>
               )}
 
@@ -361,7 +498,7 @@ function App() {
                   </button>
                 )}
 
-                {(textInput.trim() || files.length > 0) && isIdle && (
+                {(textInput.trim() || files.length > 0 || cumulativeBurns > 0) && isIdle && (
                   <button
                     type="button"
                     onClick={handleReset}
@@ -401,15 +538,6 @@ function App() {
           )}
         </main>
       </div>
-
-      {/* Drag hint */}
-      {dragOver && (
-        <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center">
-          <div className="animate-pulse text-lg tracking-[0.5em] text-orange-200/40 md:text-2xl">
-            松 手 投 入 火 中
-          </div>
-        </div>
-      )}
     </div>
   );
 }

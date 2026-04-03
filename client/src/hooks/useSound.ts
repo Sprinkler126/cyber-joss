@@ -11,6 +11,9 @@ import type { BurnPhase } from './useBurnCeremony';
  *   - paper-ignite:  one-shot on drop / ignite
  *   - ember-settle:  one-shot when fire is fading
  *   - bell:          completion chime
+ *
+ * New: `dragSense` ramps crackling when paper approaches fire.
+ *      `playContactBurst` triggers a loud crack on paper-fire contact.
  */
 
 export type FireStage = 'idle' | 'small' | 'medium' | 'large';
@@ -21,17 +24,20 @@ interface UseSoundOptions {
   burningIntensity: number;
   /** Explicit fire stage derived from mingli / content */
   fireStage: FireStage;
+  /** 0-1 how close the dragged paper is to fire */
+  dragSense?: number;
 }
 
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * Math.max(0, Math.min(1, t));
 }
 
-export function useSound({ phase, burningIntensity, fireStage }: UseSoundOptions) {
+export function useSound({ phase, burningIntensity, fireStage, dragSense = 0 }: UseSoundOptions) {
   const [enabled, setEnabled] = useState(true);
   const prevPhaseRef = useRef<BurnPhase>('idle');
   const stageRef = useRef<FireStage>('idle');
   const intensityRef = useRef(burningIntensity);
+  const dragSenseRef = useRef(dragSense);
 
   const soundsRef = useRef<{
     fireSmall: Howl;
@@ -44,12 +50,9 @@ export function useSound({ phase, burningIntensity, fireStage }: UseSoundOptions
   } | null>(null);
 
   // Keep refs in sync
-  useEffect(() => {
-    stageRef.current = fireStage;
-  }, [fireStage]);
-  useEffect(() => {
-    intensityRef.current = burningIntensity;
-  }, [burningIntensity]);
+  useEffect(() => { stageRef.current = fireStage; }, [fireStage]);
+  useEffect(() => { intensityRef.current = burningIntensity; }, [burningIntensity]);
+  useEffect(() => { dragSenseRef.current = dragSense; }, [dragSense]);
 
   // --- Load sounds once ---
   useEffect(() => {
@@ -80,7 +83,7 @@ export function useSound({ phase, burningIntensity, fireStage }: UseSoundOptions
       }),
       paperIgnite: new Howl({
         src: ['/sounds/paper-ignite.wav'],
-        volume: 0.6,
+        volume: 0.65,
         preload: true,
       }),
       emberSettle: new Howl({
@@ -119,6 +122,7 @@ export function useSound({ phase, burningIntensity, fireStage }: UseSoundOptions
     const tick = () => {
       const stage = stageRef.current;
       const intensity = intensityRef.current;
+      const ds = dragSenseRef.current;
 
       // Target volumes based on fire stage
       let targetSmall = 0;
@@ -127,7 +131,6 @@ export function useSound({ phase, burningIntensity, fireStage }: UseSoundOptions
       let targetCrackle = 0;
 
       if (stage === 'idle') {
-        // Just faint embers
         targetSmall = 0.10;
         targetMedium = 0;
         targetLarge = 0;
@@ -149,6 +152,14 @@ export function useSound({ phase, burningIntensity, fireStage }: UseSoundOptions
         targetCrackle = lerp(0.20, 0.42, intensity);
       }
 
+      // Drag proximity: boost crackling as paper approaches fire
+      if (ds > 0.1) {
+        targetCrackle = Math.max(targetCrackle, ds * 0.25);
+        targetSmall = Math.max(targetSmall, 0.10 + ds * 0.10);
+        // Slight medium boost
+        targetMedium = Math.max(targetMedium, ds * 0.12);
+      }
+
       // Smooth fade towards targets
       const rate = 0.04;
       s.fireSmall.volume(lerp(s.fireSmall.volume(), targetSmall, rate));
@@ -156,11 +167,11 @@ export function useSound({ phase, burningIntensity, fireStage }: UseSoundOptions
       s.fireLarge.volume(lerp(s.fireLarge.volume(), targetLarge, rate));
       s.paperCrackle.volume(lerp(s.paperCrackle.volume(), targetCrackle, rate));
 
-      // Adjust playback rates slightly for realism
+      // Adjust playback rates for realism
       s.fireSmall.rate(lerp(0.92, 1.05, intensity));
       s.fireMedium.rate(lerp(0.94, 1.08, intensity));
       s.fireLarge.rate(lerp(0.96, 1.12, intensity));
-      s.paperCrackle.rate(lerp(0.90, 1.15, intensity));
+      s.paperCrackle.rate(lerp(0.90, 1.15, Math.max(intensity, ds)));
 
       frame = requestAnimationFrame(tick);
     };
@@ -183,19 +194,16 @@ export function useSound({ phase, burningIntensity, fireStage }: UseSoundOptions
 
     const prev = prevPhaseRef.current;
 
-    // Paper ignite whoosh when entering igniting
     if (phase === 'igniting' && prev !== 'igniting') {
       s.paperIgnite.stop();
       s.paperIgnite.play();
     }
 
-    // Ember settling when fading
     if (phase === 'fading' && prev !== 'fading') {
       s.emberSettle.stop();
       s.emberSettle.play();
     }
 
-    // Bell on completion
     if (phase === 'done' && prev !== 'done') {
       s.bell.stop();
       s.bell.play();
@@ -204,12 +212,26 @@ export function useSound({ phase, burningIntensity, fireStage }: UseSoundOptions
     prevPhaseRef.current = phase;
   }, [phase, enabled]);
 
-  // --- Play paper ignite on demand (for file drop) ---
+  // --- Play paper ignite on demand (for file drop → fire contact) ---
   const playPaperIgnite = useCallback(() => {
     const s = soundsRef.current;
     if (!s || !enabled) return;
     s.paperIgnite.stop();
     s.paperIgnite.play();
+  }, [enabled]);
+
+  // --- Contact burst: louder crack when paper hits fire ---
+  const playContactBurst = useCallback(() => {
+    const s = soundsRef.current;
+    if (!s || !enabled) return;
+    // Play ignite at higher volume for the "contact" moment
+    s.paperIgnite.volume(0.85);
+    s.paperIgnite.rate(1.15);
+    s.paperIgnite.stop();
+    s.paperIgnite.play();
+    // Temporarily spike crackle volume
+    s.paperCrackle.volume(Math.min(0.55, s.paperCrackle.volume() + 0.25));
+    s.paperCrackle.rate(1.2);
   }, [enabled]);
 
   const toggle = useCallback(() => {
@@ -224,5 +246,5 @@ export function useSound({ phase, burningIntensity, fireStage }: UseSoundOptions
 
   const label = useMemo(() => (enabled ? '音效开启' : '音效关闭'), [enabled]);
 
-  return { enabled, label, toggle, playPaperIgnite };
+  return { enabled, label, toggle, playPaperIgnite, playContactBurst };
 }

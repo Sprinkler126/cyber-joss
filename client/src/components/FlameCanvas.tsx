@@ -4,18 +4,22 @@ import flameVert from '../shaders/flame.vert?raw';
 import flameFrag from '../shaders/flame.frag?raw';
 
 interface FlameCanvasProps {
-  intensity: number;    // 0..1 fire size
-  burning: boolean;     // active burn phase
-  dropPulse: number;    // 0..1 flashes on file drop, decays externally
-  ashAmount: number;    // 0..1 accumulated ash on ground
+  intensity: number;      // 0..1 fire size
+  burning: boolean;       // active burn phase
+  dropPulse: number;      // 0..1 flashes on file drop, decays externally
+  ashAmount: number;       // 0..1 accumulated ash on ground
+  dragSense: number;      // 0..1 how close the dragged file is to the fire
+  cumulativeBurns: number; // 0..N total items burned (grows ember pile, smoke, light)
 }
 
-function FlameCanvas({ intensity, burning, dropPulse, ashAmount }: FlameCanvasProps) {
+function FlameCanvas({ intensity, burning, dropPulse, ashAmount, dragSense, cumulativeBurns }: FlameCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const targetRef = useRef(intensity);
   const burningRef = useRef(burning);
   const dropPulseRef = useRef(dropPulse);
   const ashRef = useRef(ashAmount);
+  const dragSenseRef = useRef(dragSense);
+  const cumulativeRef = useRef(cumulativeBurns);
 
   const uniformsRef = useRef({
     uTime: { value: 0 },
@@ -24,6 +28,8 @@ function FlameCanvas({ intensity, burning, dropPulse, ashAmount }: FlameCanvasPr
     uBurning: { value: 0 },
     uDropPulse: { value: 0 },
     uAshAmount: { value: 0 },
+    uDragSense: { value: 0 },
+    uCumulative: { value: 0 },
   });
 
   useEffect(() => {
@@ -69,6 +75,8 @@ function FlameCanvas({ intensity, burning, dropPulse, ashAmount }: FlameCanvasPr
       u.uBurning.value += ((burningRef.current ? 1 : 0) - u.uBurning.value) * 0.07;
       u.uDropPulse.value += (dropPulseRef.current - u.uDropPulse.value) * 0.12;
       u.uAshAmount.value += (ashRef.current - u.uAshAmount.value) * 0.03;
+      u.uDragSense.value += (dragSenseRef.current - u.uDragSense.value) * 0.08;
+      u.uCumulative.value += (cumulativeRef.current - u.uCumulative.value) * 0.025;
       renderer.render(scene, camera);
       frame = window.requestAnimationFrame(render);
     };
@@ -90,6 +98,8 @@ function FlameCanvas({ intensity, burning, dropPulse, ashAmount }: FlameCanvasPr
   useEffect(() => { burningRef.current = burning; }, [burning]);
   useEffect(() => { dropPulseRef.current = dropPulse; }, [dropPulse]);
   useEffect(() => { ashRef.current = ashAmount; }, [ashAmount]);
+  useEffect(() => { dragSenseRef.current = dragSense; }, [dragSense]);
+  useEffect(() => { cumulativeRef.current = cumulativeBurns; }, [cumulativeBurns]);
 
   return <div ref={containerRef} className="pointer-events-none absolute inset-0 z-0" />;
 }
