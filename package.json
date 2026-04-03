@@ -1,0 +1,16 @@
+{
+  "name": "cyber-joss",
+  "version": "1.0.0",
+  "description": "赛博烧纸 - CyberJoss: A digital burning ceremony web application",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n client,server -c blue,green \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client": "cd client && npx vite",
+    "dev:server": "cd server && npx tsx watch src/server.ts",
+    "build": "cd client && npx vite build",
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
